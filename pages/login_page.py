@@ -76,6 +76,38 @@ class LoginPage:
         self.wait.until(lambda d: "login" not in d.current_url)
         return True
 
+    def login_with_invalid_credentials(self, username="admin@admin1.ru", password="wrong"):
+        """
+        Для негативных тестов: неверный логин/пароль
+        Возвращает True если остались на странице логина или увидели ошибку
+        """
+        import time  # Добавляем импорт временно
+
+        print(f"🧪 Пытаемся войти с неверными данными: {username}")
+
+        self.open()
+        self.enter_username(username)
+        self.enter_password(password)
+        self.click_login_button()
+
+        # Даем время системе обработать запрос
+        time.sleep(3)
+
+        # Вариант 1: Проверяем сообщение об ошибке
+        error_text = self.get_error_message()
+        if error_text:
+            print(f"✅ Найдено сообщение об ошибке: '{error_text}'")
+            return f"error: {error_text}"
+
+        # Вариант 2: Проверяем что остались на странице логина
+        if self.is_on_login_page():
+            print("✅ Остались на странице логина")
+            return "stay_on_login"
+
+        # Вариант 3: Что-то пошло не так (успешный вход с неверными данными?)
+        print(f"⚠️ Непонятный результат. URL: {self.driver.current_url}")
+        return "unexpected_result"
+
     def get_error_message(self):
         """
         Получить текст сообщения об ошибке
