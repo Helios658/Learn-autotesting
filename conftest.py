@@ -1,7 +1,11 @@
-# conftest.py
+# conftest.py - ДОБАВЬ ИМПОРТ В НАЧАЛО
 import pytest
+import os
 from selenium import webdriver
 from pages.login_page import LoginPage
+
+# Автоматически определяем CI режим
+IS_CI = os.getenv('GITHUB_ACTIONS') == 'true'
 
 
 def pytest_addoption(parser):
@@ -14,24 +18,26 @@ def driver(request):
     """Фикстура драйвера с выбором режима"""
     options = webdriver.ChromeOptions()
 
-    # Проверяем передан ли флаг --headless
-    if request.config.getoption("--headless"):
+    # В CI всегда headless, иначе по флагу
+    use_headless = IS_CI or request.config.getoption("--headless")
+
+    if use_headless:
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
+        print("🚀 Запуск в CI/headless режиме")
     else:
-        # В обычном режиме - полноэкранный браузер
         options.add_argument("--start-maximized")
+        print("🚀 Запуск в обычном режиме")
 
     options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-
     driver = webdriver.Chrome(options=options)
     driver.implicitly_wait(5)
 
-    # Явно устанавливаем максимальный размер если не headless
-    if not request.config.getoption("--headless"):
+    if not use_headless:
         driver.maximize_window()
+
     yield driver
     driver.quit()
 
