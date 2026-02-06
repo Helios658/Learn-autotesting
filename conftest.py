@@ -1,11 +1,7 @@
 # conftest.py - ДОБАВЬ ИМПОРТ В НАЧАЛО
 import pytest
-import os
 from selenium import webdriver
 from pages.login_page import LoginPage
-
-# Автоматически определяем CI режим
-IS_CI = os.getenv('GITHUB_ACTIONS') == 'true'
 
 
 def pytest_addoption(parser):
