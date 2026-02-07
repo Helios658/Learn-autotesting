@@ -1,21 +1,4 @@
 # Learn-autotesting
-autotests_gamma/
-├── pages/ # Page Object Models
-│ ├── base_page.py # Базовый класс всех страниц
-│ ├── login_page.py # Страница логина (готово)
-│ ├── main_page.py # Главная страница (новое)
-│ ├── call_page.py # Страница звонка (новое)
-│ ├── recovery_page.py # Восстановление пароля
-│ ├── mail_page.py # Работа с почтой
-│ └── new_password_page.py # Установка нового пароля
-├── tests/ # Тесты
-│ ├── test_login.py # Тесты логина
-│ ├── test_logout.py # Тесты выхода
-│ └── test_password_recovery.py # Восстановление пароля
-├── config.py # Конфигурация
-├── conftest.py # Pytest фиктуры
-├── requirements.txt # Зависимости
-└── README.md # Документация
 
 ### Установка зависимостей
 ```bash
