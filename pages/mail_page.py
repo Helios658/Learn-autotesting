@@ -3,39 +3,61 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import re
 import time
+from config import config
 
 
 class MailPage:
-    """Page Object для почтового ящика hi-tech.org"""
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, 10)
+        self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
 
-        # Локаторы для входа на почту
-        self.LOGIN_INPUT = (By.XPATH, "/html/body/form/div/div[2]/div/div[3]/input")
-        self.PASSWORD_INPUT = (By.XPATH, "/html/body/form/div/div[2]/div/div[5]/input")
-        self.SIGNIN_BUTTON = (By.XPATH, "/html/body/form/div/div[2]/div/div[9]/div/span")
+        # Локаторы для входа на почту (исправленные)
+        self.LOGIN_INPUT = (By.ID, "username")
+        self.PASSWORD_INPUT = (By.ID, "password")
+        self.SIGNIN_BUTTON = (By.CLASS_NAME, "signinTxt")
 
         # Локаторы для поиска письма
         self.EMAIL_SUBJECT = (By.XPATH, "//*[contains(text(), 'Восстановление пароля')]")
 
-    def login(self, username, password):
+    def login(self, username=None, password=None):
+        username = username or config.MAIL_USERNAME
+        password = password or config.MAIL_PASSWORD
         """Вход на почту"""
-        self.driver.get("https://mail.hi-tech.org")
-        time.sleep(2)
+        self.driver.get(config.MAIL_URL)
+
+        # ✅ ДОБАВЬТЕ ЯВНОЕ ОЖИДАНИЕ загрузки страницы
+        self.wait.until(
+            EC.presence_of_element_located(self.LOGIN_INPUT)
+        )
+
+        print(f"⏳ Страница почты загружена, вводим данные для: {username}")
 
         # Вводим логин
-        self.driver.find_element(*self.LOGIN_INPUT).send_keys(username)
+        username_field = self.wait.until(
+            EC.element_to_be_clickable(self.LOGIN_INPUT)
+        )
+        username_field.send_keys(username)
 
         # Вводим пароль
-        self.driver.find_element(*self.PASSWORD_INPUT).send_keys(password)
+        password_field = self.driver.find_element(*self.PASSWORD_INPUT)
+        password_field.send_keys(password)
 
         # Нажимаем войти
-        self.driver.find_element(*self.SIGNIN_BUTTON).click()
+        signin_button = self.wait.until(
+            EC.element_to_be_clickable(self.SIGNIN_BUTTON)
+        )
+        signin_button.click()
 
-        time.sleep(3)
-        print(f"✅ Вошли на почту: {username}")
+        # ✅ Ждем успешного входа (появление интерфейса почты)
+        try:
+            self.wait.until(
+                EC.url_contains("/mail/")  # или другой признак успешного входа
+            )
+            print(f"✅ Успешный вход на почту: {username}")
+        except:
+            print(f"⚠️ Возможно проблемы со входом, но продолжаем...")
+
         return self
 
     def wait_for_recovery_email(self, timeout=60):

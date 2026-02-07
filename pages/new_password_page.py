@@ -11,15 +11,11 @@ class NewPasswordPage:
         self.driver = driver
         self.wait = WebDriverWait(driver, 10)
 
-        # Локаторы
-        self.NEW_PASSWORD_INPUT = (By.XPATH,
-                                   "/html/body/app-root/div/div/app-new-password/app-login-wrapper/section/div/div/div[1]/div[1]/app-input-password-with-validation/div/label/div/input")
-        self.CONFIRM_PASSWORD_INPUT = (By.XPATH,
-                                       "/html/body/app-root/div/div/app-new-password/app-login-wrapper/section/div/div/div[1]/div[2]/app-input-password/div/label/div/input")
-        self.SAVE_BUTTON = (By.XPATH,
-                            "/html/body/app-root/div/div/app-new-password/app-login-wrapper/section/div/div/div[2]/button/span[2]")
-        self.LOGIN_LINK = (By.XPATH,
-                           "/html/body/app-root/div/div/app-new-password/app-password-successfully-changed/app-login-wrapper/section/div/div/a")
+        # ✅ ИСПРАВЛЕНО: относительные локаторы
+        self.NEW_PASSWORD_INPUT = (By.XPATH, "//input[@placeholder='Введите новый пароль']")
+        self.CONFIRM_PASSWORD_INPUT = (By.XPATH, "//input[@placeholder='Повторите пароль']")
+        self.SAVE_BUTTON = (By.XPATH, "//span[contains(text(), 'Изменить пароль')]")
+        self.LOGIN_LINK = (By.XPATH, "//a[contains(text(), 'Вход в систему')]")
 
     def set_new_password(self, new_password):
         """Устанавливает новый пароль"""
@@ -35,17 +31,9 @@ class NewPasswordPage:
         confirm_field = self.driver.find_element(*self.CONFIRM_PASSWORD_INPUT)
         confirm_field.send_keys(new_password)
 
-        # Сохраняем - ИСПОЛЬЗУЕМ JavaScript клик для headless режима
+        # Сохраняем
         save_btn = self.driver.find_element(*self.SAVE_BUTTON)
-
-        # Способ 1: JavaScript клик (работает в headless)
         self.driver.execute_script("arguments[0].click();", save_btn)
-
-        # ИЛИ Способ 2: Обычный клик с проверкой видимости
-        # if save_btn.is_displayed() and save_btn.is_enabled():
-        #     save_btn.click()
-        # else:
-        #     self.driver.execute_script("arguments[0].click();", save_btn)
 
         time.sleep(3)
         print(f"✅ Пароль изменен на: {new_password}")
@@ -56,7 +44,6 @@ class NewPasswordPage:
         login_link = self.wait.until(
             EC.element_to_be_clickable(self.LOGIN_LINK)
         )
-        # Используем JavaScript клик для надежности
         self.driver.execute_script("arguments[0].click();", login_link)
         time.sleep(2)
         print("✅ Перешли на страницу логина")

@@ -10,11 +10,9 @@ class PasswordRecoveryPage:
         self.driver = driver
         self.wait = WebDriverWait(driver, 10)
 
-        # Локаторы
-        self.EMAIL_INPUT = (By.XPATH,
-                            "/html/body/app-root/div/div/app-recovery-password/app-login-wrapper/section/div/div/form/input")
-        self.SUBMIT_BUTTON = (By.XPATH,
-                              "/html/body/app-root/div/div/app-recovery-password/app-login-wrapper/section/div/div/form/div/button/span[2]")
+        # ✅ ИСПРАВЛЕНО: относительные локаторы
+        self.EMAIL_INPUT = (By.XPATH, "//input[@placeholder='Введите логин или е-mail']")
+        self.SUBMIT_BUTTON = (By.XPATH, "//span[contains(text(), 'Получить письмо')]")
 
     def request_password_recovery(self, email):
         """Запрос восстановления пароля"""
@@ -25,7 +23,7 @@ class PasswordRecoveryPage:
         email_field.clear()
         email_field.send_keys(email)
 
-        # Нажимаем отправить
+        # Находим кнопку по span тексту
         submit_btn = self.driver.find_element(*self.SUBMIT_BUTTON)
         submit_btn.click()
 

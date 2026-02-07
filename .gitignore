@@ -2,3 +2,8 @@
 __pycache__/
 venv/
 *.pycgit
+.env
+.env.*
+*.secret
+*.key
+last_generated_password.txt

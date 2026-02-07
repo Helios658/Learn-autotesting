@@ -1,16 +1,18 @@
+# login_page.py
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import json
+from config import config
 
 
 class LoginPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, 10)
-        self.URL = "https://gamma.hi-tech.org/v2/login"
+        self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
+        self.URL = config.LOGIN_URL
         self.USERNAME_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.login-input']")
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
@@ -42,11 +44,16 @@ class LoginPage:
         Возвращает: код ошибки или 0
         """
         try:
-            time.sleep(1)  # Ждем запрос
+            wait_for_logs = WebDriverWait(self.driver, 3)
 
-            logs = self.driver.get_log('performance')
+            logs = []
+            start_time = time.time()
+            while time.time() - start_time < 3:
+                logs = self.driver.get_log('performance')
+                if logs:
+                    break
 
-            for entry in logs[-20:]:  # Смотрим последние 20 логов
+            for entry in logs[-20:]:
                 if 'responseReceived' in entry['message']:
                     try:
                         data = json.loads(entry['message'])
@@ -57,25 +64,86 @@ class LoginPage:
                         continue
             return 0
         except:
-            return 0  # Если ошибка - считаем что нет network ошибок
+            return 0
 
-    def login_with_network_check(self, username="admin@admin1.ru", password="123456", expect_success=True):
+    def login_with_network_check(self, username=None, password=None, expect_success=True):
         """
         Основной метод: логин + проверка network
         Возвращает код ошибки (0 если нет ошибки)
         """
+        username = username or config.ADMIN_EMAIL
+        password = password or config.ADMIN_PASSWORD
+
         self.open()
         self.enter_username(username)
         self.enter_password(password)
         self.click_login_button()
 
-        time.sleep(2)
-
-        error_code = self.get_network_error()
-
+        error_code = 0
         if expect_success:
-            # Проверяем что нет ошибки и ушли с login страницы
+            try:
+                self.wait.until(
+                    EC.invisibility_of_element_located(self.LOGIN_BUTTON)
+                )
+                print("✅ Успешный вход, ожидание завершено.")
+            except Exception as e:
+                print(f"⚠️ Не дождались успешного входа: {e}")
+                error_code = self.get_network_error()
+            else:
+                error_code = self.get_network_error()
             return error_code
         else:
-            # Проверяем что есть ошибка
+            # Для случая когда НЕ ожидаем успешного входа
+            time.sleep(2)
+            error_code = self.get_network_error()
             return error_code
+
+    def check_400_error(self):
+        """
+        Ищет ошибку 400 в network логах
+        Возвращает True если найдена ошибка 400
+        """
+        import time
+        import json
+        import re
+
+        # Ждем выполнения запроса
+        time.sleep(3)
+
+        # Получаем логи performance
+        try:
+            logs = self.driver.get_log('performance')
+        except:
+            return False
+
+        # Ищем ошибку 400
+        for entry in logs[-50:]:  # Проверяем последние 50 записей
+            message = entry.get('message', '')
+
+            # Простой поиск через регулярные выражения
+            if re.search(r'"status"\s*:\s*400\b', message) or '400 Bad Request' in message:
+                print("✅ Найдена ошибка 400 в network логах")
+                return True
+
+            # Пробуем распарсить JSON
+            try:
+                data = json.loads(message)
+                # Проверяем разные форматы логов
+                status = None
+
+                if 'message' in data and 'params' in data['message']:
+                    params = data['message']['params']
+                    if 'response' in params:
+                        status = params['response'].get('status')
+
+                if status == 400:
+                    print("✅ Найдена ошибка 400 (JSON парсинг)")
+                    return True
+
+            except json.JSONDecodeError:
+                continue
+            except Exception:
+                continue
+
+        print("⚠️ Ошибка 400 не найдена в логах")
+        return False

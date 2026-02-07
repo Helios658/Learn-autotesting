@@ -1,6 +1,14 @@
+# conftest.py
 import pytest
 from selenium import webdriver
-from pages.login_page import LoginPage
+from dotenv import load_dotenv  # ← ДОБАВЬТЕ ЭТОТ ИМПОРТ
+import os
+
+# 🔧 ЗАГРУЖАЕМ .env ПЕРЕД ИСПОЛЬЗОВАНИЕМ config
+load_dotenv()
+
+# ТОЛЬКО ПОСЛЕ load_dotenv() импортируем config
+from config import config  # ← ИМПОРТ ПОСЛЕ load_dotenv()
 
 
 def pytest_addoption(parser):
@@ -13,10 +21,10 @@ def driver(request):
     """Фикстура драйвера с выбором режима"""
     options = webdriver.ChromeOptions()
 
-    # Получаем значение опции --headless
-    is_headless = request.config.getoption("--headless")
+    # Используем настройку из конфига или командной строки
+    use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
 
-    if is_headless:
+    if use_headless:
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
@@ -28,9 +36,9 @@ def driver(request):
 
     options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
     driver = webdriver.Chrome(options=options)
-    driver.implicitly_wait(5)
+    driver.implicitly_wait(config.IMPLICIT_WAIT)
 
-    if not is_headless:
+    if not use_headless:
         driver.maximize_window()
 
     yield driver
@@ -38,5 +46,24 @@ def driver(request):
 
 
 @pytest.fixture
+def admin_user():
+    """Фикстура с данными администратора"""
+    return {
+        'email': config.ADMIN_EMAIL,
+        'password': config.ADMIN_PASSWORD
+    }
+
+
+@pytest.fixture
+def test_user():
+    """Фикстура с данными тестового пользователя"""
+    return {
+        'email': config.USER_EMAIL,
+        'password': config.USER_PASSWORD  # ← будет динамический пароль
+    }
+
+
+@pytest.fixture
 def login_page(driver):
+    from pages.login_page import LoginPage
     return LoginPage(driver)
