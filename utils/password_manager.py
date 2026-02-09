@@ -19,7 +19,6 @@ class PasswordManager:
         all_chars = digits + letters + special
         random.shuffle(all_chars)
         password = ''.join(all_chars)
-
         return password
 
     def save_password(self, password):

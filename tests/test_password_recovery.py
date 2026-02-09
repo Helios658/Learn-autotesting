@@ -8,7 +8,8 @@ from pages.login_page import LoginPage
 from pages.password_recovery_page import PasswordRecoveryPage
 from pages.mail_page import MailPage
 from pages.new_password_page import NewPasswordPage
-from config import config  # ← ИМПОРТ КОНФИГА
+from config import config
+from pathlib import Path
 
 
 def save_password_to_file(password):
@@ -39,7 +40,7 @@ def generate_random_password():
     return password
 
 
-@pytest.mark.skip(reason="Требует работающей корпоративной почты")
+#@pytest.mark.skip(reason="Требует работающей корпоративной почты")
 def test_password_recovery(driver):
     """Полный тест восстановления пароля"""
     wait = WebDriverWait(driver, config.EXPLICIT_WAIT)

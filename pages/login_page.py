@@ -33,6 +33,36 @@ class LoginPage:
         element.send_keys(password)
         return self
 
+    def get_entered_username(self):
+        element = self.wait.until(EC.presence_of_element_located(self.USERNAME_INPUT))
+        return element.get_attribute("value")
+
+    def get_entered_password(self):
+        element = self.wait.until(EC.presence_of_element_located(self.PASSWORD_INPUT))
+        return element.get_attribute("value")
+
+    def is_login_button_enabled(self):
+        element = self.wait.until(EC.presence_of_element_located(self.LOGIN_BUTTON))
+        return element.is_enabled()
+
+    def wait_for_successful_login(self, timeout=None):
+        """
+        Ожидает успешный вход: исчезновение кнопки логина
+        или уход со страницы /login.
+        Возвращает True при успехе, иначе False.
+        """
+        timeout = timeout or config.EXPLICIT_WAIT
+        waiter = WebDriverWait(self.driver, timeout)
+
+        try:
+            waiter.until(
+                lambda d: ('/login' not in d.current_url.lower())
+                or EC.invisibility_of_element_located(self.LOGIN_BUTTON)(d)
+            )
+            return True
+        except Exception:
+            return False
+
     def click_login_button(self):
         element = self.wait.until(EC.element_to_be_clickable(self.LOGIN_BUTTON))
         element.click()

@@ -1,34 +1,54 @@
 # tests/test_login.py
 import pytest
-from config import config  # ← ИМПОРТ КОНФИГА НАПРЯМУЮ
+from config import config
 
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30381")
+def test_30381_registered_user_can_login(login_page):
+    """
+    #30381: Вход в систему зарегистрированного пользователя (smoketest).
 
-def test_successful_login(login_page):
-    """Успешный логин с данными из конфига"""
-    error_code = login_page.login_with_network_check(
-        username=config.ADMIN_EMAIL,      # ← напрямую из config
-        password=config.ADMIN_PASSWORD,    # ← напрямую из config
-        expect_success=True
-    )
-    assert error_code == 0, f"При успешном логине ошибка {error_code}"
-    assert "login" not in login_page.driver.current_url
-    print(f"✅ Успешный логин, код: {error_code}")
+    Важно: после клика "Войти" может быть небольшая задержка редиректа,
+    поэтому используем явное ожидание успешного перехода.
+    """
+    username = config.ADMIN_EMAIL
+    password = config.ADMIN_PASSWORD
+
+    login_page.open()
+    login_page.enter_username(username)
+    login_page.enter_password(password)
+
+    # ER 1.1: данные отображаются в полях
+    assert login_page.get_entered_username() == username
+    assert login_page.get_entered_password() == password
+
+    # ER 1.1: кнопка "Войти" активна
+    assert login_page.is_login_button_enabled(), "Кнопка 'Войти' должна быть активна"
+
+    login_page.click_login_button()
+
+    # ER 1.1: открывается страница чатов (ожидаем уход со страницы логина)
+    logged_in = login_page.wait_for_successful_login()
+    if not logged_in:
+        error_code = login_page.get_network_error()
+        pytest.fail(
+            f"Не удалось войти: URL остался {login_page.driver.current_url}, "
+            f"network_error={error_code}. Проверьте тестовые данные/окружение."
+        )
 
 
 def test_invalid_password(login_page):
     """Неверный пароль - проверяем ошибку 400"""
     print("🧪 Тест: вход с неверным паролем (ожидаем 400)")
 
-    # Выполняем вход с неверным паролем
     login_page.open()
     login_page.enter_username(config.ADMIN_EMAIL)
     login_page.enter_password("wrong_password_123")
     login_page.click_login_button()
 
-    # Проверяем наличие ошибки 400
     has_400_error = login_page.check_400_error()
 
-    # Основная проверка: должна быть ошибка 400
     assert has_400_error, "Не обнаружена ошибка 400 при неверном пароле"
 
     print("✅ Тест пройден: ошибка 400 корректно возвращается сервером")
