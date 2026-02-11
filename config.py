@@ -1,8 +1,7 @@
 # config.py
 import os
-import json
-from pathlib import Path
 from dotenv import load_dotenv
+from utils.password_manager import PasswordManager
 
 # Загружаем переменные из .env файла
 load_dotenv()
@@ -13,18 +12,16 @@ def get_dynamic_password():
     password_file = Path("last_generated_password.txt")
 
     if password_file.exists():
-        try:
-            # Читаем пароль из файла
-            with open(password_file, 'r', encoding='utf-8') as f:
-                password = f.read().strip()
+        """Получает последний сгенерированный пароль из файла через PasswordManager."""
+        manager = PasswordManager()
+        password = manager.get_password()
 
-            if password:
-                print(f"📁 Прочитан динамический пароль из {password_file.name}")
-                return password
-            else:
-                print(f"⚠️ Файл {password_file.name} пустой")
-        except Exception as e:
-            print(f"⚠️ Ошибка чтения файла {password_file.name}: {e}")
+        if password:
+            print(f"📁 Прочитан динамический пароль из {manager.password_file.name}")
+            return password
+
+        if manager.password_file.exists():
+            print(f"⚠️ Файл {manager.password_file.name} пустой")
 
     # Если файла нет или он пустой - используем значение из .env или дефолт
     env_password = os.getenv('TEST_USER_PASSWORD', '')

@@ -1,6 +1,4 @@
 import pytest
-import random
-import string
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -9,35 +7,7 @@ from pages.password_recovery_page import PasswordRecoveryPage
 from pages.mail_page import MailPage
 from pages.new_password_page import NewPasswordPage
 from config import config
-from pathlib import Path
-
-
-def save_password_to_file(password):
-    """Сохраняет пароль в файл для последующего использования"""
-    password_file = Path("last_generated_password.txt")
-
-    try:
-        with open(password_file, 'w', encoding='utf-8') as f:
-            f.write(password)
-        print(f"💾 Пароль сохранен в {password_file.name}")
-        return True
-    except Exception as e:
-        print(f"❌ Ошибка сохранения пароля: {e}")
-        return False
-
-def generate_random_password():
-    """Генерирует случайный пароль"""
-    prefix = "NewPassword"
-    random_digits = ''.join(random.choices(string.digits, k=3))
-    special_chars = "!@#$%^&*"
-    random_special = random.choice(special_chars)
-    password = f"{prefix}{random_digits}{random_special}"
-    if save_password_to_file(password):
-        print(f"📋 Сгенерирован и сохранен пароль: {password}")
-    else:
-        print(f"📋 Сгенерирован пароль: {password} (не сохранен в файл)")
-
-    return password
+from services.password_service import PasswordService
 
 
 #@pytest.mark.skip(reason="Требует работающей корпоративной почты")
@@ -77,14 +47,15 @@ def test_password_recovery(driver):
 
         # 3. Смена пароля
         driver.get(reset_link)
-        new_password = generate_random_password()
+        password_service = PasswordService()
+        new_password = password_service.generate_and_persist_password()
         new_password_page = NewPasswordPage(driver)
         new_password_page.set_new_password(new_password)
         new_password_page.go_to_login()
 
         # 4. Логин с новым паролем
         login_page.enter_username(config.USER_EMAIL)
-        current_password = config.USER_PASSWORD
+        current_password = new_password
         login_page.enter_password(current_password)
         login_page.click_login_button()
 

@@ -7,7 +7,6 @@ from .base_page import BasePage
 class MainPage(BasePage):
     """Page Object для главной страницы после логина"""
 
-    # Локаторы (предположительные - уточните по вашей системе)
     CALL_BUTTON = (By.CSS_SELECTOR, "[e2e-id*='call'], [data-testid*='call']")
     PHONE_INPUT = (By.CSS_SELECTOR, "input[type='tel'], [placeholder*='номер']")
     START_CALL_BUTTON = (By.CSS_SELECTOR, "button[type='submit'], [class*='start-call']")
@@ -24,5 +23,6 @@ class MainPage(BasePage):
 
         # Начать звонок
         self.wait_for_clickable(self.START_CALL_BUTTON).click()
+        from .call_page import CallPage
 
-        return CallPage(self.driver)  # Вернем Page Object для страницы звонка
+        return CallPage(self.driver)
