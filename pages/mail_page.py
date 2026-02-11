@@ -1,8 +1,10 @@
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 import re
 import time
+
 from config import config
 
 
@@ -21,85 +23,77 @@ class MailPage:
         self.EMAIL_SUBJECT = (By.XPATH, "//*[contains(text(), 'Восстановление пароля')]")
 
     def login(self, username=None, password=None):
+        """Вход на почту."""
         username = username or config.MAIL_USERNAME
         password = password or config.MAIL_PASSWORD
-        """Вход на почту"""
+
         self.driver.get(config.MAIL_URL)
 
-        # ✅ ДОБАВЬТЕ ЯВНОЕ ОЖИДАНИЕ загрузки страницы
-        self.wait.until(
-            EC.presence_of_element_located(self.LOGIN_INPUT)
-        )
+        self.wait.until(EC.presence_of_element_located(self.LOGIN_INPUT))
 
         print(f"⏳ Страница почты загружена, вводим данные для: {username}")
 
-        # Вводим логин
-        username_field = self.wait.until(
-            EC.element_to_be_clickable(self.LOGIN_INPUT)
-        )
+        username_field = self.wait.until(EC.element_to_be_clickable(self.LOGIN_INPUT))
         username_field.send_keys(username)
 
-        # Вводим пароль
-        password_field = self.driver.find_element(*self.PASSWORD_INPUT)
+        password_field = self.wait.until(EC.element_to_be_clickable(self.PASSWORD_INPUT))
         password_field.send_keys(password)
 
-        # Нажимаем войти
-        signin_button = self.wait.until(
-            EC.element_to_be_clickable(self.SIGNIN_BUTTON)
-        )
+        signin_button = self.wait.until(EC.element_to_be_clickable(self.SIGNIN_BUTTON))
         signin_button.click()
 
-        # ✅ Ждем успешного входа (появление интерфейса почты)
         try:
-            self.wait.until(
-                EC.url_contains("/mail/")  # или другой признак успешного входа
-            )
+            self.wait.until(EC.url_contains("/mail/"))
             print(f"✅ Успешный вход на почту: {username}")
-        except:
-            print(f"⚠️ Возможно проблемы со входом, но продолжаем...")
+        except TimeoutException:
+            print("⚠️ Возможно проблемы со входом, но продолжаем...")
 
         return self
 
     def wait_for_recovery_email(self, timeout=60):
-        """Ждет письмо с восстановлением пароля"""
+        """Ждет письмо с восстановлением пароля."""
         print(f"⏳ Ждем письмо (макс {timeout} сек)...")
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
             try:
-                # Обновляем страницу почты
                 self.driver.refresh()
-                time.sleep(3)
+                remaining = max(1, int(deadline - time.time()))
+                wait_timeout = min(7, remaining)
 
-                # Ищем письмо
-                if self.driver.find_elements(*self.EMAIL_SUBJECT):
-                    print("✅ Письмо найдено!")
-                    return True
-
-            except:
-                pass
-
-            time.sleep(5)  # Проверяем каждые 5 секунд
+                WebDriverWait(self.driver, wait_timeout).until(
+                    EC.presence_of_element_located(self.EMAIL_SUBJECT)
+                )
+                print("✅ Письмо найдено!")
+                return True
+            except TimeoutException:
+                continue
+            except WebDriverException:
+                continue
 
         print(f"❌ Письмо не пришло за {timeout} секунд")
         return False
 
     def get_password_reset_link(self, wait_for_email=True):
-        """Получает ссылку восстановления из письма"""
+        """Получает ссылку восстановления из письма."""
 
-        if wait_for_email:
-            # Ждем письмо
-            if not self.wait_for_recovery_email():
-                raise Exception("Письмо с восстановлением не пришло")
+        if wait_for_email and not self.wait_for_recovery_email():
+            raise Exception("Письмо с восстановлением не пришло")
 
-        # Ждем и кликаем на письмо
-        email_element = self.wait.until(
-            EC.element_to_be_clickable(self.EMAIL_SUBJECT)
-        )
+        email_element = self.wait.until(EC.element_to_be_clickable(self.EMAIL_SUBJECT))
         email_element.click()
-        time.sleep(3)
 
-        # Ищем ссылку в письме
+        try:
+            WebDriverWait(self.driver, config.EXPLICIT_WAIT).until(
+                lambda d: re.search(
+                    r'https://gamma\.hi-tech\.org/v2/login/new-password[^\s<>"\']+',
+                    d.page_source,
+                )
+                is not None
+            )
+        except TimeoutException as exc:
+            raise Exception("Не нашли ссылку восстановления в письме") from exc
+
         page_source = self.driver.page_source
         match = re.search(r'https://gamma\.hi-tech\.org/v2/login/new-password[^\s<>"\']+', page_source)
 
@@ -107,5 +101,5 @@ class MailPage:
             reset_link = match.group()
             print(f"✅ Нашли ссылку: {reset_link}")
             return reset_link
-        else:
-            raise Exception("Не нашли ссылку восстановления в письме")
+
+        raise Exception("Не нашли ссылку восстановления в письме")

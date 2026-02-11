@@ -1,9 +1,12 @@
-# login_page.py
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
 import json
+import re
+import time
+
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
 from config import config
 
 
@@ -17,18 +20,33 @@ class LoginPage:
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
 
+    def _resolve_text_input(self, locator):
+        """Возвращает реальное поле ввода, даже если locator указывает на контейнер."""
+        element = self.wait.until(EC.element_to_be_clickable(locator))
+        tag_name = element.tag_name.lower()
+
+        if tag_name in {"input", "textarea"}:
+            return element
+
+        nested_input = element.find_elements(By.CSS_SELECTOR, "input, textarea")
+        if nested_input:
+            return nested_input[0]
+
+        return element
+
     def open(self):
         self.driver.get(self.URL)
         return self
 
     def enter_username(self, username):
-        element = self.wait.until(EC.element_to_be_clickable(self.USERNAME_INPUT))
-        element.clear()
+        element = self._resolve_text_input(self.USERNAME_INPUT)
+        element.click()
         element.send_keys(username)
         return self
 
     def enter_password(self, password):
-        element = self.wait.until(EC.element_to_be_clickable(self.PASSWORD_INPUT))
+        element = self._resolve_text_input(self.PASSWORD_INPUT)
+        element.click()
         element.clear()
         element.send_keys(password)
         return self
@@ -38,11 +56,11 @@ class LoginPage:
         return element.get_attribute("value")
 
     def get_entered_password(self):
-        element = self.wait.until(EC.presence_of_element_located(self.PASSWORD_INPUT))
+        element = self._resolve_text_input(self.PASSWORD_INPUT)
         return element.get_attribute("value")
 
     def is_login_button_enabled(self):
-        element = self.wait.until(EC.presence_of_element_located(self.LOGIN_BUTTON))
+        element = self._resolve_text_input(self.PASSWORD_INPUT)
         return element.is_enabled()
 
     def wait_for_successful_login(self, timeout=None):
@@ -60,7 +78,7 @@ class LoginPage:
                 or EC.invisibility_of_element_located(self.LOGIN_BUTTON)(d)
             )
             return True
-        except Exception:
+        except TimeoutException:
             return False
 
     def click_login_button(self):
@@ -74,27 +92,25 @@ class LoginPage:
         Возвращает: код ошибки или 0
         """
         try:
-            wait_for_logs = WebDriverWait(self.driver, 3)
-
-            logs = []
-            start_time = time.time()
-            while time.time() - start_time < 3:
-                logs = self.driver.get_log('performance')
-                if logs:
-                    break
-
-            for entry in logs[-20:]:
-                if 'responseReceived' in entry['message']:
-                    try:
-                        data = json.loads(entry['message'])
-                        status = data['message']['params']['response']['status']
-                        if 400 <= status < 600:
-                            return status
-                    except:
-                        continue
+            logs = self.driver.get_log('performance')
+        except WebDriverException:
             return 0
-        except:
-            return 0
+
+        for entry in logs[-50:]:
+            message = entry.get('message', '')
+            if 'responseReceived' not in message:
+                continue
+
+            try:
+                data = json.loads(message)
+                status = data['message']['params']['response']['status']
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+
+            if 400 <= status < 600:
+                return status
+
+        return 0
 
     def login_with_network_check(self, username=None, password=None, expect_success=True):
         """
@@ -109,71 +125,61 @@ class LoginPage:
         self.enter_password(password)
         self.click_login_button()
 
-        error_code = 0
         if expect_success:
             try:
-                self.wait.until(
-                    EC.invisibility_of_element_located(self.LOGIN_BUTTON)
-                )
+                self.wait.until(EC.invisibility_of_element_located(self.LOGIN_BUTTON))
                 print("✅ Успешный вход, ожидание завершено.")
-            except Exception as e:
+            except TimeoutException as e:
                 print(f"⚠️ Не дождались успешного входа: {e}")
-                error_code = self.get_network_error()
-            else:
-                error_code = self.get_network_error()
-            return error_code
-        else:
-            # Для случая когда НЕ ожидаем успешного входа
-            time.sleep(2)
-            error_code = self.get_network_error()
-            return error_code
+                return self.get_network_error()
 
-    def check_400_error(self):
-        """
-        Ищет ошибку 400 в network логах
-        Возвращает True если найдена ошибка 400
-        """
-        import time
-        import json
-        import re
+            return self.get_network_error()
 
-        # Ждем выполнения запроса
-        time.sleep(3)
-
-        # Получаем логи performance
         try:
-            logs = self.driver.get_log('performance')
-        except:
-            return False
+            WebDriverWait(self.driver, 3).until(
+                lambda d: self.get_network_error() != 0 or '/login' not in d.current_url.lower()
+            )
+        except TimeoutException:
+            pass
 
-        # Ищем ошибку 400
-        for entry in logs[-50:]:  # Проверяем последние 50 записей
-            message = entry.get('message', '')
+        return self.get_network_error()
 
-            # Простой поиск через регулярные выражения
-            if re.search(r'"status"\s*:\s*400\b', message) or '400 Bad Request' in message:
-                print("✅ Найдена ошибка 400 в network логах")
-                return True
+    def check_400_error(self, timeout=5):
+        """
+        Ищет ошибку 400 в network логах.
+        Возвращает True если найдена ошибка 400.
+        """
+        deadline = time.time() + timeout
 
-            # Пробуем распарсить JSON
+        while time.time() < deadline:
             try:
-                data = json.loads(message)
-                # Проверяем разные форматы логов
-                status = None
+                logs = self.driver.get_log('performance')
+            except WebDriverException:
+                return False
 
-                if 'message' in data and 'params' in data['message']:
-                    params = data['message']['params']
-                    if 'response' in params:
-                        status = params['response'].get('status')
+            for entry in logs[-100:]:
+                message = entry.get('message', '')
+
+                if re.search(r'"status"\s*:\s*400\b', message) or '400 Bad Request' in message:
+                    print("✅ Найдена ошибка 400 в network логах")
+                    return True
+
+                try:
+                    data = json.loads(message)
+                    params = data.get('message', {}).get('params', {})
+                    response = params.get('response', {})
+                    status = response.get('status')
+                except (json.JSONDecodeError, TypeError):
+                    continue
 
                 if status == 400:
                     print("✅ Найдена ошибка 400 (JSON парсинг)")
                     return True
 
-            except json.JSONDecodeError:
-                continue
-            except Exception:
-                continue
+            try:
+                WebDriverWait(self.driver, 0.5).until(lambda _: False)
+            except TimeoutException:
+                pass
 
         print("⚠️ Ошибка 400 не найдена в логах")
         return False
