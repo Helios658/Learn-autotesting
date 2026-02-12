@@ -6,7 +6,6 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
 from config import config
 
 
@@ -19,6 +18,11 @@ class LoginPage:
         self.USERNAME_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.login-input']")
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
+        self.SHOW_ALL_INPUT = (By.XPATH, "//a[contains(text(), 'Показать все')]")
+        self.ADFS_LINK = (By.XPATH, "//a[text()='Войти через ADFS(login+password)']")
+        self.USERNAME_INPUT_ADFS = (By.CSS_SELECTOR, "#userNameInput")
+        self.PASSWORD_INPUT_ADFS = (By.CSS_SELECTOR, "#passwordInput")
+        self.LOGIN_BUTTON_ADFS = (By.CSS_SELECTOR, "#submitButton")
 
     def _resolve_text_input(self, locator):
         """Возвращает реальное поле ввода, даже если locator указывает на контейнер."""
@@ -44,8 +48,21 @@ class LoginPage:
         element.send_keys(username)
         return self
 
+    def enter_username_adfs(self, username):
+        element = self._resolve_text_input(self.USERNAME_INPUT_ADFS)
+        element.click()
+        element.send_keys(username)
+        return self
+
     def enter_password(self, password):
         element = self._resolve_text_input(self.PASSWORD_INPUT)
+        element.click()
+        element.clear()
+        element.send_keys(password)
+        return self
+
+    def enter_password_adfs(self, password):
+        element = self._resolve_text_input(self.PASSWORD_INPUT_ADFS)
         element.click()
         element.clear()
         element.send_keys(password)
@@ -55,13 +72,29 @@ class LoginPage:
         element = self.wait.until(EC.presence_of_element_located(self.USERNAME_INPUT))
         return element.get_attribute("value")
 
+    def get_entered_username_adfs(self):
+        element = self.wait.until(EC.presence_of_element_located(self.USERNAME_INPUT_ADFS))
+        return element.get_attribute("value")
+
     def get_entered_password(self):
         element = self._resolve_text_input(self.PASSWORD_INPUT)
+        return element.get_attribute("value")
+
+    def get_entered_password_adfs(self):
+        element = self._resolve_text_input(self.PASSWORD_INPUT_ADFS)
         return element.get_attribute("value")
 
     def is_login_button_enabled(self):
         element = self._resolve_text_input(self.PASSWORD_INPUT)
         return element.is_enabled()
+
+    def click_show_all(self):
+        element = self.wait.until(EC.element_to_be_clickable(self.SHOW_ALL_INPUT))
+        element.click()
+
+    def adfs_link_open(self):
+        element = self.wait.until(EC.element_to_be_clickable(self.ADFS_LINK))
+        element.click()
 
     def wait_for_successful_login(self, timeout=None):
         """
@@ -83,6 +116,11 @@ class LoginPage:
 
     def click_login_button(self):
         element = self.wait.until(EC.element_to_be_clickable(self.LOGIN_BUTTON))
+        element.click()
+        return self
+
+    def click_login_button_adfs(self):
+        element = self.wait.until(EC.element_to_be_clickable(self.LOGIN_BUTTON_ADFS))
         element.click()
         return self
 

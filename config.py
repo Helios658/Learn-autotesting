@@ -56,8 +56,16 @@ class Config:
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
 
     # Администратор
-    ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@admin1.ru')
-    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '123456')
+    ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
+
+    #LDAP
+    TEST_LDAP_USER_EMAIL = os.getenv('TEST_LDAP_USER_EMAIL')
+    TEST_LDAP_USER_PASSWORD = os.getenv('TEST_LDAP_USER_PASSWORD')
+
+    #ADFS
+    TEST_ADFS_USER_EMAIL = os.getenv('TEST_ADFS_USER_EMAIL')
+    TEST_ADFS_USER_PASSWORD = os.getenv('TEST_ADFS_USER_PASSWORD')
 
     # ========== Настройки запуска ==========
     HEADLESS_MODE = os.getenv('HEADLESS_MODE', 'False').lower() == 'true'
@@ -78,6 +86,6 @@ config = Config()
 
 # Тестовая проверка
 if __name__ == "__main__":
-    print(f"USER_EMAIL: {config.USER_EMAIL}")
-    print(f"USER_PASSWORD: {'*' * len(config.USER_PASSWORD) if config.USER_PASSWORD else '(пусто)'}")
-    print(f"Пароль из файла: {get_dynamic_password()}")
+    print(f"TEST_ADFS_USER_EMAIL: {config.TEST_ADFS_USER_EMAIL}")
+    print(f"TEST_ADFS_USER_PASSWORD: {'*' * len(config.TEST_ADFS_USER_PASSWORD) if config.TEST_ADFS_USER_PASSWORD else '(пусто)'}")
+    #print(f"Пароль из файла: {get_dynamic_password()}")
