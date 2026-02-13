@@ -18,3 +18,16 @@ class PasswordService:
             print(f"📋 Сгенерирован пароль: {password} (не сохранен в файл)")
 
         return password
+
+    def get_current_password(self, fallback_password=""):
+        """Возвращает актуальный пароль из файла, либо fallback-значение."""
+        password = self.manager.get_password()
+
+        if password:
+            print(f"📁 Используем пароль из {self.manager.password_file.name}")
+            return password
+
+        if fallback_password:
+            print("📝 Используем fallback-пароль")
+
+        return fallback_password

@@ -2,6 +2,7 @@
 import os
 from dotenv import load_dotenv
 from utils.password_manager import PasswordManager
+from pathlib import Path
 
 # Загружаем переменные из .env файла
 load_dotenv()

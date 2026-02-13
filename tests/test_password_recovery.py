@@ -1,6 +1,9 @@
+import time
+
 import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from pages.login_page import LoginPage
 from pages.password_recovery_page import PasswordRecoveryPage
@@ -75,3 +78,65 @@ def test_password_recovery(driver):
             pytest.skip(f"Пропускаем тест из-за проблем с почтой: {e}")
         else:
             raise
+
+def test_password_recovery_profile(driver):
+    wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
+    password_service = PasswordService()
+    current_password = password_service.get_current_password(config.USER_PASSWORD)
+    if not current_password:
+        pytest.skip("Нет текущего пароля: файл last_generated_password.txt и TEST_USER_PASSWORD пусты")
+
+    login_page = LoginPage(driver)
+    login_page.open()
+    login_page.enter_username(config.USER_EMAIL)
+    login_page.enter_password(current_password)
+    login_page.click_login_button()
+
+    wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[e2e-id='shared-core.navigation-menu.settings']"))).click()
+    wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[e2e-id='settings-page.list.profile']"))).click()
+    wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[e2e-id='settings-page.profile.cng-pwd-link']"))).click()
+
+    old_pass_input = wait.until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR,"[e2e-id='settings-page.change-password-modal.old-password-input']"))
+    )
+    old_pass_input.click()
+    old_pass_input.clear()
+    old_pass_input.send_keys(current_password)
+
+    new_password = password_service.generate_and_persist_password()
+
+    new_pass_input = wait.until(
+        EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, "[e2e-id='settings-page.change-password-modal.new-password-input']"))
+    )
+    new_pass_input.clear()
+    new_pass_input.send_keys(new_password)
+
+    confirm_pass_input = wait.until(
+        EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, "[e2e-id='settings-page.change-password-modal.new-password-confirm-input']"))
+    )
+    confirm_pass_input.clear()
+    confirm_pass_input.send_keys(new_password)
+
+    save_button = wait.until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, "[e2e-id='settings-page.change-password-modal.save-btn']"))
+    )
+    save_button.click()
+
+    logout_button = wait.until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, "[e2e-id='settings-page.profile.logout-link']"))
+    )
+    logout_button.click()
+
+    wait.until(EC.url_contains("login"))
+
+    error_code = login_page.login_with_network_check(
+        username=config.USER_EMAIL,
+        password=new_password,
+        expect_success=True,
+    )
+    assert error_code == 0, f"После смены пароля логин вернул сетевую ошибку: {error_code}"
+    assert login_page.wait_for_successful_login(), (
+        f"После смены пароля остались на странице логина: {driver.current_url}"
+    )
