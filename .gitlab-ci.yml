@@ -33,7 +33,7 @@ allure_testops_upload:
     - job: ui_tests
       artifacts: true
   rules:
-    - if: 'allure.iva.ru && 7a558d43-2e06-4205-94e2-2d16ab841c0c && https://allure.iva.ru/project/32/launches'
+    - if: '$ALLURE_ENDPOINT != "allure.iva.ru" && $ALLURE_TOKEN != "7a558d43-2e06-4205-94e2-2d16ab841c0c" && $ALLURE_PROJECT_ID != "https://allure.iva.ru/project/32/launches"'
       when: on_success
     - when: never
   script:
