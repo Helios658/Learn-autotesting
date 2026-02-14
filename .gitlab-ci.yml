@@ -13,6 +13,8 @@ cache:
 full_e2e_tests:
   stage: test
   image: python:3.11-slim
+  tags:
+    - docker_last
   before_script:
     - apt-get update
     - apt-get install -y --no-install-recommends chromium chromium-driver ca-certificates
