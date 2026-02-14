@@ -1,8 +1,9 @@
 # conftest.py
-import pytest
-from selenium import webdriver
-from dotenv import load_dotenv  # ← ДОБАВЬТЕ ЭТОТ ИМПОРТ
 import os
+import pytest
+from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 
 # 🔧 ЗАГРУЖАЕМ .env ПЕРЕД ИСПОЛЬЗОВАНИЕМ config
 load_dotenv()
@@ -34,8 +35,19 @@ def driver(request):
         options.add_argument("--start-maximized")
         print("🚀 Запуск в обычном режиме")
 
-    options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-    driver = webdriver.Chrome(options=options)
+    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+    if os.path.exists(chrome_bin):
+        options.binary_location = chrome_bin
+
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+
+    chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+    if os.path.exists(chromedriver_path):
+        service = Service(executable_path=chromedriver_path)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        # fallback для локального окружения, где chromedriver устанавливается Selenium Manager
+        driver = webdriver.Chrome(options=options)
     driver.implicitly_wait(config.IMPLICIT_WAIT)
 
     if not use_headless:
