@@ -12,6 +12,8 @@ cache:
 
 full_e2e_tests:
   stage: test
+  tags:
+    - docker_last  # <--- ДОБАВЛЕНО!
   image: python:3.11-slim
   before_script:
     - apt-get update
