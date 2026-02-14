@@ -10,6 +10,10 @@ load_dotenv()
 
 def get_dynamic_password():
     """Получает последний сгенерированный пароль из файла"""
+    env_password = os.getenv('TEST_USER_PASSWORD', '')
+    if os.getenv('CI', '').lower() == 'true' and env_password:
+        print("📝 CI: используем TEST_USER_PASSWORD из переменных окружения")
+        return env_password
     password_file = Path("last_generated_password.txt")
 
     if password_file.exists():
