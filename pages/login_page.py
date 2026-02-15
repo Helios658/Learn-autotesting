@@ -19,14 +19,16 @@ class LoginPage:
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
         self.SHOW_ALL_INPUT_LOCATORS = [
+            (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.show-more-providers-link']"),
             (By.XPATH, "//a[contains(normalize-space(.), 'Показать все') or contains(normalize-space(.), 'Show all')]"),
+            (By.XPATH, "//*[self::a or self::button][contains(@e2e-id, 'show') and contains(@e2e-id, 'provider')]"),
             (By.CSS_SELECTOR, "[e2e-id*='show-all'], [data-testid*='show-all']"),
         ]
         self.ADFS_LINK_LOCATORS = [
-            (By.XPATH, "//a[contains(., 'ADFS') and (contains(., 'login+password') or contains(., 'Login+password'))]"),
-            (By.XPATH, "//button[contains(., 'ADFS')]")
+            (By.CSS_SELECTOR, "[e2e-id*='adfs']"),
+            (By.XPATH, "//*[self::a or self::button][contains(translate(normalize-space(.), 'adfs', 'ADFS'), 'ADFS') and (contains(., 'login+password') or contains(., 'Login+password'))]"),
+            (By.XPATH, "//*[self::a or self::button][contains(translate(normalize-space(.), 'adfs', 'ADFS'), 'ADFS')]")
         ]
-        self.ADFS_LINK = (By.XPATH, "//a[text()='Войти через ADFS(login+password)']")
         self.USERNAME_INPUT_ADFS = (By.CSS_SELECTOR, "#userNameInput")
         self.PASSWORD_INPUT_ADFS = (By.CSS_SELECTOR, "#passwordInput")
         self.LOGIN_BUTTON_ADFS = (By.CSS_SELECTOR, "#submitButton")
@@ -96,20 +98,29 @@ class LoginPage:
         return element.is_enabled()
 
     def click_show_all(self):
-        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS)
+        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS, timeout=3)
+        if not element:
+            # В некоторых окружениях список провайдеров раскрыт по умолчанию.
+            return self
         self._safe_click(element)
+        return self
 
     def adfs_link_open(self):
+        # "Показать все" может отсутствовать, поэтому не валим тест на этом шаге.
+        self.click_show_all()
         element = self._find_first_clickable(self.ADFS_LINK_LOCATORS)
+        if not element:
+            raise TimeoutException(f"Не удалось найти кликабельный ADFS-элемент по локаторам: {self.ADFS_LINK_LOCATORS}")
         self._safe_click(element)
 
     def _find_first_clickable(self, locators):
+        waiter = self.wait if timeout is None else WebDriverWait(self.driver, timeout)
         for locator in locators:
             try:
-                return self.wait.until(EC.element_to_be_clickable(locator))
+                return waiter.until(EC.element_to_be_clickable(locator))
             except TimeoutException:
                 continue
-        raise TimeoutException(f"Не удалось найти кликабельный элемент по локаторам: {locators}")
+        return None
 
     def _safe_click(self, element):
         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)

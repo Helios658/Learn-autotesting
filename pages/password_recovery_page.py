@@ -20,14 +20,19 @@ class PasswordRecoveryPage:
         ]
         self.SUBMIT_BUTTON_LOCATORS = [
             (By.CSS_SELECTOR, "[e2e-id='recovery-password-page.button']"),
-            (By.XPATH, "//button[contains(., 'Получить письмо') or contains(., 'Get email') or contains(., 'Отправить') or contains(., 'Send')]")
+            (By.CSS_SELECTOR, "[e2e-id*='recovery'][e2e-id*='button']"),
+            (By.CSS_SELECTOR, "[e2e-id*='password-recovery'][e2e-id*='button']"),
+            (By.CSS_SELECTOR, "button[type='submit']"),
+            (By.XPATH,
+             "//*[self::button or self::a][contains(., 'Получить письмо') or contains(., 'Get email') or contains(., 'Отправить') or contains(., 'Send') or contains(., 'Восстановить') or contains(., 'Recover')]")
         ]
 
-    def _find_first_clickable(self, locators):
+    def _find_first_clickable(self, locators, timeout=None):
+        waiter = self.wait if timeout is None else WebDriverWait(self.driver, timeout)
         for locator in locators:
             try:
-                return self.wait.until(EC.element_to_be_clickable(locator))
-            except Exception:
+                return waiter.until(EC.element_to_be_clickable(locator))
+            except TimeoutException:
                 continue
         raise TimeoutError(f"Не удалось найти кликабельный элемент по локаторам: {locators}")
 
