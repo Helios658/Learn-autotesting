@@ -18,7 +18,14 @@ class LoginPage:
         self.USERNAME_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.login-input']")
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
-        self.SHOW_ALL_INPUT = (By.XPATH, "//a[contains(text(), 'Показать все')]")
+        self.SHOW_ALL_INPUT_LOCATORS = [
+            (By.XPATH, "//a[contains(normalize-space(.), 'Показать все') or contains(normalize-space(.), 'Show all')]"),
+            (By.CSS_SELECTOR, "[e2e-id*='show-all'], [data-testid*='show-all']"),
+        ]
+        self.ADFS_LINK_LOCATORS = [
+            (By.XPATH, "//a[contains(., 'ADFS') and (contains(., 'login+password') or contains(., 'Login+password'))]"),
+            (By.XPATH, "//button[contains(., 'ADFS')]")
+        ]
         self.ADFS_LINK = (By.XPATH, "//a[text()='Войти через ADFS(login+password)']")
         self.USERNAME_INPUT_ADFS = (By.CSS_SELECTOR, "#userNameInput")
         self.PASSWORD_INPUT_ADFS = (By.CSS_SELECTOR, "#passwordInput")
@@ -89,12 +96,27 @@ class LoginPage:
         return element.is_enabled()
 
     def click_show_all(self):
-        element = self.wait.until(EC.element_to_be_clickable(self.SHOW_ALL_INPUT))
-        element.click()
+        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS)
+        self._safe_click(element)
 
     def adfs_link_open(self):
-        element = self.wait.until(EC.element_to_be_clickable(self.ADFS_LINK))
-        element.click()
+        element = self._find_first_clickable(self.ADFS_LINK_LOCATORS)
+        self._safe_click(element)
+
+    def _find_first_clickable(self, locators):
+        for locator in locators:
+            try:
+                return self.wait.until(EC.element_to_be_clickable(locator))
+            except TimeoutException:
+                continue
+        raise TimeoutException(f"Не удалось найти кликабельный элемент по локаторам: {locators}")
+
+    def _safe_click(self, element):
+        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+        try:
+            element.click()
+        except Exception:
+            self.driver.execute_script("arguments[0].click();", element)
 
     def wait_for_successful_login(self, timeout=None):
         """

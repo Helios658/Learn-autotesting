@@ -4,9 +4,10 @@ import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from config import config
 
 def test_logout_menu(login_page, driver):
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
     error_code = login_page.login_with_network_check(expect_success=True)
     assert error_code == 0
     print("✅ Залогинились")
@@ -27,7 +28,7 @@ def test_logout_menu(login_page, driver):
     print("✅ Успешный выход с выпадающего меню")
 
 def test_logout_profile(login_page, driver):
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
     error_code = login_page.login_with_network_check(expect_success=True)
     assert error_code == 0
     print("✅ Залогинились")

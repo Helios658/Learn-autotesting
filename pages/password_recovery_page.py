@@ -1,6 +1,7 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from config import config
 
 
 class PasswordRecoveryPage:
@@ -8,7 +9,7 @@ class PasswordRecoveryPage:
 
     def __init__(self, driver):
         self.driver = driver
-        self.wait = WebDriverWait(driver, 10)
+        self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
 
         self.EMAIL_INPUT_LOCATORS = [
             (By.CSS_SELECTOR, "[e2e-id*='recovery'][e2e-id*='input']"),
@@ -18,8 +19,8 @@ class PasswordRecoveryPage:
             (By.CSS_SELECTOR, "input[type='email']"),
         ]
         self.SUBMIT_BUTTON_LOCATORS = [
-            (By.CSS_SELECTOR, "[e2e-id*='recovery'][e2e-id*='button']"),
-            (By.XPATH, "//button[contains(., 'Получить письмо') or contains(., 'Get email')]")
+            (By.CSS_SELECTOR, "[e2e-id='recovery-password-page.button']"),
+            (By.XPATH, "//button[contains(., 'Получить письмо') or contains(., 'Get email') or contains(., 'Отправить') or contains(., 'Send')]")
         ]
 
     def _find_first_clickable(self, locators):
@@ -38,7 +39,11 @@ class PasswordRecoveryPage:
         email_field.send_keys(email)
 
         submit_btn = self._find_first_clickable(self.SUBMIT_BUTTON_LOCATORS)
-        submit_btn.click()
+        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
+        try:
+            submit_btn.click()
+        except Exception:
+            self.driver.execute_script("arguments[0].click();", submit_btn)
 
         print(f"✅ Запрос восстановления отправлен для: {email}")
         return self
