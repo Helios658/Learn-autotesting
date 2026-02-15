@@ -10,11 +10,13 @@ load_dotenv()
 
 def get_dynamic_password():
     """Получает последний сгенерированный пароль из файла"""
+    password_file = Path("last_generated_password.txt")
     env_password = os.getenv('TEST_USER_PASSWORD', '')
+
+    # В CI приоритетнее пароль из переменных, чтобы не использовать устаревший файл из репозитория.
     if os.getenv('CI', '').lower() == 'true' and env_password:
         print("📝 CI: используем TEST_USER_PASSWORD из переменных окружения")
         return env_password
-    password_file = Path("last_generated_password.txt")
 
     if password_file.exists():
         """Получает последний сгенерированный пароль из файла через PasswordManager."""
@@ -48,7 +50,7 @@ class Config:
 
     # ========== Пользовательские данные ==========
     # Основной тестовый пользователь
-    USER_EMAIL = os.getenv('TEST_USER_EMAIL', 'v.kornienko@iva.ru')
+    USER_EMAIL = os.getenv('TEST_USER_EMAIL')
 
     # 🔧 ДИНАМИЧЕСКИЙ ПАРОЛЬ - читается из файла
     @property
@@ -57,7 +59,7 @@ class Config:
         return get_dynamic_password()
 
     # Почтовый ящик для восстановления пароля
-    MAIL_USERNAME = os.getenv('MAIL_USERNAME', 'v.kornienko@iva-tech.ru')
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME')
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
 
     # Администратор
@@ -91,6 +93,6 @@ config = Config()
 
 # Тестовая проверка
 if __name__ == "__main__":
-    print(f"TEST_ADFS_USER_EMAIL: {config.TEST_ADFS_USER_EMAIL}")
-    print(f"TEST_ADFS_USER_PASSWORD: {'*' * len(config.TEST_ADFS_USER_PASSWORD) if config.TEST_ADFS_USER_PASSWORD else '(пусто)'}")
-    #print(f"Пароль из файла: {get_dynamic_password()}")
+    print(f"USER_EMAIL: {config.USER_EMAIL}")
+    print(f"USER_PASSWORD: {'*' * len(config.USER_PASSWORD) if config.USER_PASSWORD else '(пусто)'}")
+    print(f"Пароль из файла: {get_dynamic_password()}")

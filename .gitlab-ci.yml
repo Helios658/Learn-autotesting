@@ -1,34 +1,50 @@
-  stages:
-    - test
+stages:
+  - test
 
-  variables:
-    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-    CHROME_BIN: "/usr/bin/chromium"
-    CHROMEDRIVER_PATH: "/usr/bin/chromedriver"
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  CHROME_BIN: "/usr/bin/chromium"
+  CHROMEDRIVER_PATH: "/usr/bin/chromedriver"
+  # Основные переменные окружения для тестов
+  CI: "true"
+  TEST_BASE_URL: "https://gamma.hi-tech.org"
+  HEADLESS_MODE: "true"
+  BROWSER: "chrome"
+  TEST_USER_EMAIL: "v.kornienko@iva.ru"
+  # TEST_USER_PASSWORD не задаем статически, он будет передан динамически
 
-  cache:
+cache:
+  paths:
+    - .cache/pip
+
+full_e2e_tests:
+  stage: test
+  image: python:3.11-slim
+  tags:
+    - docker_last
+  before_script:
+    # Установка зависимостей
+    - apt-get update
+    - apt-get install -y --no-install-recommends chromium chromium-driver ca-certificates curl
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - chromium --version
+    - chromedriver --version
+    
+    # ПОЛУЧЕНИЕ АКТУАЛЬНОГО ПАРОЛЯ
+    - echo "🔑 Получаем актуальный пароль..."
+    - echo "✅ Пароль получен из переменных GitLab"
+    - echo "📝 TEST_USER_PASSWORD длина = ${#TEST_USER_PASSWORD} символов"
+    
+  script:
+    - pytest -v --headless --junitxml=report.xml
+    
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: report.xml
     paths:
-      - .cache/pip
-
-  full_e2e_tests:
-    stage: test
-    image: python:3.11-slim
-    tags:
-      - docker_last
-    before_script:
-      - apt-get update
-      - apt-get install -y --no-install-recommends chromium chromium-driver ca-certificates
-      - python -m pip install --upgrade pip
-      - pip install -r requirements.txt
-      - chromium --version
-      - chromedriver --version
-    script:
-      - pytest -v --headless --junitxml=report.xml
-    artifacts:
-      when: always
-      expire_in: 7 days
-      reports:
-        junit: report.xml
-      paths:
-        - report.xml
-        - .pytest_cache
+      - report.xml
+      - .pytest_cache
+      - last_generated_password.txt
