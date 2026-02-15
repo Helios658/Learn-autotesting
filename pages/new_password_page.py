@@ -12,7 +12,6 @@ class NewPasswordPage:
         self.driver = driver
         self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
 
-        # ✅ ИСПРАВЛЕНО: относительные локаторы
         self.NEW_PASSWORD_INPUT = (By.XPATH, "//input[@placeholder='Введите новый пароль']")
         self.CONFIRM_PASSWORD_INPUT = (By.XPATH, "//input[@placeholder='Повторите пароль']")
         self.SAVE_BUTTON = (By.XPATH, "//span[contains(text(), 'Изменить пароль')]")

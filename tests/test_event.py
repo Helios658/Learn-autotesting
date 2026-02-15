@@ -3,7 +3,7 @@ import pytest
 from config import config
 import re
 from urllib.parse import parse_qs, urlparse
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -100,18 +100,20 @@ def _find_event_in_virtual_list_by_id(wait: WebDriverWait, driver, target_event_
     for _ in range(max_scroll_attempts):
         cards = driver.find_elements(*EVENT_CARDS)
         for card in cards:
-            signature = card.text.strip()
-            if signature in seen_signatures:
+            try:
+                signature = card.text.strip()
+                if signature in seen_signatures:
+                    continue
+                seen_signatures.add(signature)
+
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
+                driver.execute_script("arguments[0].click();", card)
+
+                selected_id = _extract_selected_item_id(driver.current_url)
+                if selected_id == target_event_id:
+                    return card
+            except StaleElementReferenceException:
                 continue
-            seen_signatures.add(signature)
-
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
-            driver.execute_script("arguments[0].click();", card)
-
-            selected_id = _extract_selected_item_id(driver.current_url)
-            if selected_id == target_event_id:
-                return card
-
         old_scroll_top = driver.execute_script("return arguments[0].scrollTop;", scroller)
         driver.execute_script("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", scroller)
         time.sleep(0.4)
@@ -127,7 +129,6 @@ def _find_event_in_virtual_list_by_id(wait: WebDriverWait, driver, target_event_
 @pytest.mark.buildtest
 @pytest.mark.testcase("30887")
 def test_30887_events_one_time_login_only(login_page, driver):
-    """#30887: логин + создание конференции через конкретный шаблон."""
     wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
 
     error_code = login_page.login_with_network_check(

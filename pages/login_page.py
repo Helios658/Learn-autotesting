@@ -1,8 +1,7 @@
 import json
 import re
 import time
-
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException, StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -35,17 +34,22 @@ class LoginPage:
 
     def _resolve_text_input(self, locator):
         """Возвращает реальное поле ввода, даже если locator указывает на контейнер."""
-        element = self.wait.until(EC.element_to_be_clickable(locator))
-        tag_name = element.tag_name.lower()
+        for _ in range(3):
+            try:
+                element = self.wait.until(EC.element_to_be_clickable(locator))
+                tag_name = element.tag_name.lower()
 
-        if tag_name in {"input", "textarea"}:
-            return element
+                if tag_name in {"input", "textarea"}:
+                    return element
 
-        nested_input = element.find_elements(By.CSS_SELECTOR, "input, textarea")
-        if nested_input:
-            return nested_input[0]
+                nested_input = element.find_elements(By.CSS_SELECTOR, "input, textarea")
+                if nested_input:
+                    return nested_input[0]
 
-        return element
+                return element
+            except StaleElementReferenceException:
+                continue
+        return self.wait.until(EC.presence_of_element_located(locator))
 
     def open(self):
         self.driver.get(self.URL)
@@ -98,36 +102,39 @@ class LoginPage:
         return element.is_enabled()
 
     def click_show_all(self):
-        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS, timeout=3)
+        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS)
         if not element:
-            # В некоторых окружениях список провайдеров раскрыт по умолчанию.
             return self
         self._safe_click(element)
         return self
 
     def adfs_link_open(self):
-        # "Показать все" может отсутствовать, поэтому не валим тест на этом шаге.
         self.click_show_all()
         element = self._find_first_clickable(self.ADFS_LINK_LOCATORS)
         if not element:
-            raise TimeoutException(f"Не удалось найти кликабельный ADFS-элемент по локаторам: {self.ADFS_LINK_LOCATORS}")
+            raise TimeoutException(
+                f"Не удалось найти кликабельный ADFS-элемент по локаторам: {self.ADFS_LINK_LOCATORS}")
         self._safe_click(element)
 
     def _find_first_clickable(self, locators):
-        waiter = self.wait if timeout is None else WebDriverWait(self.driver, timeout)
         for locator in locators:
             try:
-                return waiter.until(EC.element_to_be_clickable(locator))
+                return WebDriverWait(self.driver, 3).until(EC.element_to_be_clickable(locator))
             except TimeoutException:
                 continue
         return None
 
     def _safe_click(self, element):
-        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-        try:
-            element.click()
-        except Exception:
-            self.driver.execute_script("arguments[0].click();", element)
+        for _ in range(2):
+            try:
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                element.click()
+                return
+            except StaleElementReferenceException:
+                continue
+            except Exception:
+                self.driver.execute_script("arguments[0].click();", element)
+                return
 
     def wait_for_successful_login(self, timeout=None):
         """
