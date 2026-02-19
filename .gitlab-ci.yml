@@ -32,17 +32,16 @@ full_e2e_tests:
   before_script:
     # Обновление пакетов с увеличенным таймаутом
     - apt-get update -o Acquire::http::Timeout=60 -o Acquire::ftp::Timeout=60
-    - apt-get install -y --no-install-recommends 
-      chromium 
-      chromium-driver 
-      ca-certificates 
-      curl
+    - apt-get install -y --no-install-recommends chromium chromium-driver ca-certificates curl
     - python -m pip install --upgrade pip
     - pip install --retries 5 --timeout 60 -r requirements.txt
     - chromium --version
     - chromedriver --version
+    # Экспортируем переменные
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt || true
+    # Проверяем длину пароля
+    - echo "🔑 TEST_USER_PASSWORD длина = ${#TEST_USER_PASSWORD} символов"
 
   script:
     - pytest -v --headless --junitxml=report.xml
