@@ -21,8 +21,14 @@ def playwright_instance() -> Playwright:
 @pytest.fixture
 def driver(request, playwright_instance: Playwright):
     use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
-    browser = playwright_instance.chromium.launch(headless=use_headless)
-    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    browser = playwright_instance.chromium.launch(
+        headless=use_headless,
+        args=["--ignore-certificate-errors", "--allow-insecure-localhost"],
+    )
+    context = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        ignore_https_errors=True,
+    )
     page = context.new_page()
 
     if use_headless:
