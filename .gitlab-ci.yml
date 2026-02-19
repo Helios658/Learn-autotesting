@@ -4,8 +4,8 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   CI: "true"
-  TEST_BASE_URL: "https://gamma.hi-tech.org"
   HEADLESS_MODE: "true"
+  TEST_BASE_URL: "https://gamma.hi-tech.org"
   TEST_USER_EMAIL: "v.kornienko@iva.ru"
 
 cache:
@@ -14,14 +14,11 @@ cache:
 
 full_e2e_tests:
   stage: test
-  image: python:3.11-slim
+  image: mcr.microsoft.com/playwright/python:v1.51.0-jammy
   tags:
     - docker_last
   before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends ca-certificates
     - pip install -r requirements.txt
-    - python -m playwright install --with-deps chromium
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
