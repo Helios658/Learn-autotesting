@@ -1,81 +1,59 @@
-# conftest.py
 import os
 import pytest
 from dotenv import load_dotenv
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+from playwright.sync_api import Playwright, sync_playwright
 
-# 🔧 ЗАГРУЖАЕМ .env ПЕРЕД ИСПОЛЬЗОВАНИЕМ config
 load_dotenv()
 
-# ТОЛЬКО ПОСЛЕ load_dotenv() импортируем config
-from config import config  # ← ИМПОРТ ПОСЛЕ load_dotenv()
+from config import config
 
 
 def pytest_addoption(parser):
-    """Добавляем опцию --headless"""
     parser.addoption("--headless", action="store_true", help="Run tests in headless mode")
 
 
-@pytest.fixture
-def driver(request):
-    """Фикстура драйвера с выбором режима"""
-    options = webdriver.ChromeOptions()
+@pytest.fixture(scope="session")
+def playwright_instance() -> Playwright:
+    with sync_playwright() as p:
+        yield p
 
-    # Используем настройку из конфига или командной строки
+
+@pytest.fixture
+def driver(request, playwright_instance: Playwright):
     use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
+    browser = playwright_instance.chromium.launch(headless=use_headless)
+    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+    page = context.new_page()
 
     if use_headless:
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")
-        print("🚀 Запуск в headless-режиме")
+        print("🚀 Запуск Playwright в headless-режиме")
     else:
-        options.add_argument("--start-maximized")
-        print("🚀 Запуск в обычном режиме")
+        print("🚀 Запуск Playwright в обычном режиме")
 
-    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-    if os.path.exists(chrome_bin):
-        options.binary_location = chrome_bin
+    yield page
 
-    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
-
-    chromedriver_path = os.getenv("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
-    if os.path.exists(chromedriver_path):
-        service = Service(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service, options=options)
-    else:
-        # fallback для локального окружения, где chromedriver устанавливается Selenium Manager
-        driver = webdriver.Chrome(options=options)
-    driver.implicitly_wait(config.IMPLICIT_WAIT)
-
-    if not use_headless:
-        driver.maximize_window()
-
-    yield driver
-    driver.quit()
+    context.close()
+    browser.close()
 
 
 @pytest.fixture
 def admin_user():
-    """Фикстура с данными администратора"""
     return {
-        'email': config.ADMIN_EMAIL,
-        'password': config.ADMIN_PASSWORD
+        "email": config.ADMIN_EMAIL,
+        "password": config.ADMIN_PASSWORD,
     }
 
 
 @pytest.fixture
 def test_user():
-    """Фикстура с данными тестового пользователя"""
     return {
-        'email': config.USER_EMAIL,
-        'password': config.USER_PASSWORD  # ← будет динамический пароль
+        "email": config.USER_EMAIL,
+        "password": config.USER_PASSWORD,
     }
 
 
 @pytest.fixture
 def login_page(driver):
     from pages.login_page import LoginPage
+
     return LoginPage(driver)

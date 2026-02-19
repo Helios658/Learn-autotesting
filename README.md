@@ -1,27 +1,29 @@
 # Learn-autotesting
 
-### Установка зависимостей
+## Установка зависимостей
 ```bash
 pip install -r requirements.txt
+python -m playwright install --with-deps chromium
+```
 
-Запуск тестов
+## Запуск тестов
+```bash
 # Все тесты
 pytest -v
 
-# Headless режим (без UI браузера)
+# Headless режим
 pytest --headless -v
 
 # Конкретный тест
-pytest tests/test_login.py::test_successful_login -v
+pytest tests/test_login.py::test_30381_registered_user_can_login -v
 
 # С отчетом Allure
 pytest --alluredir=reports/allure-results
 allure serve reports/allure-results
+```
 
-#Как добавлять код, что бы не попали чувствительные файлы
-git add --all :!.env :!.env.* :!*.secret :!*.key :!last_generated_password.txt
-
-#Параметры из .env
+## Переменные из .env
+```env
 TEST_BASE_URL=
 TEST_USER_EMAIL=
 TEST_USER_PASSWORD=
@@ -29,3 +31,13 @@ MAIL_USERNAME=
 MAIL_PASSWORD=
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
+TEST_LDAP_USER_EMAIL=
+TEST_LDAP_USER_PASSWORD=
+TEST_ADFS_USER_EMAIL=
+TEST_ADFS_USER_PASSWORD=
+```
+
+## Безопасное добавление файлов в git
+```bash
+git add --all :!.env :!.env.* :!*.secret :!*.key :!last_generated_password.txt
+```

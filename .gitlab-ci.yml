@@ -3,12 +3,9 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  CHROME_BIN: "/usr/bin/chromium"
-  CHROMEDRIVER_PATH: "/usr/bin/chromedriver"
   CI: "true"
   TEST_BASE_URL: "https://gamma.hi-tech.org"
   HEADLESS_MODE: "true"
-  BROWSER: "chrome"
   TEST_USER_EMAIL: "v.kornienko@iva.ru"
 
 cache:
@@ -22,8 +19,9 @@ full_e2e_tests:
     - docker_last
   before_script:
     - apt-get update
-    - apt-get install -y chromium chromium-driver
+    - apt-get install -y --no-install-recommends ca-certificates
     - pip install -r requirements.txt
+    - python -m playwright install --with-deps chromium
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
