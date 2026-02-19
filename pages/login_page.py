@@ -6,14 +6,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from config import config
+from pages.base_page import BasePage
 
 
-class LoginPage:
+class LoginPage(BasePage):
 
     def __init__(self, driver):
+        super().__init__(driver)
+        self.URL = config.LOGIN_URL
         self.driver = driver
         self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
-        self.URL = config.LOGIN_URL
         self.USERNAME_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.login-input']")
         self.PASSWORD_INPUT = (By.CSS_SELECTOR, "[e2e-id='login-page.login-form.password-input']")
         self.LOGIN_BUTTON = (By.CSS_SELECTOR, "[e2e-id='login-form__login-button']")
@@ -32,11 +34,16 @@ class LoginPage:
         self.PASSWORD_INPUT_ADFS = (By.CSS_SELECTOR, "#passwordInput")
         self.LOGIN_BUTTON_ADFS = (By.CSS_SELECTOR, "#submitButton")
 
-    def _resolve_text_input(self, locator):
-        """Возвращает реальное поле ввода, даже если locator указывает на контейнер."""
+    def _resolve_text_input(self, locator, timeout=None):
+        timeout = timeout or config.EXPLICIT_WAIT
+        wait = WebDriverWait(self.driver, timeout)
+
         for _ in range(3):
             try:
-                element = self.wait.until(EC.element_to_be_clickable(locator))
+                element = wait.until(EC.presence_of_element_located(locator))
+
+                wait.until(EC.element_to_be_clickable(locator))
+
                 tag_name = element.tag_name.lower()
 
                 if tag_name in {"input", "textarea"}:
@@ -47,12 +54,15 @@ class LoginPage:
                     return nested_input[0]
 
                 return element
-            except StaleElementReferenceException:
+            except (StaleElementReferenceException, TimeoutException):
                 continue
-        return self.wait.until(EC.presence_of_element_located(locator))
+        raise TimeoutException(f"Не удалось найти поле ввода по локатору: {locator}")
 
     def open(self):
         self.driver.get(self.URL)
+        WebDriverWait(self.driver, config.EXPLICIT_WAIT).until(
+            EC.presence_of_element_located(self.USERNAME_INPUT)
+        )
         return self
 
     def enter_username(self, username):
@@ -102,7 +112,7 @@ class LoginPage:
         return element.is_enabled()
 
     def click_show_all(self):
-        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS)
+        element = self._find_first_clickable(self.SHOW_ALL_INPUT_LOCATORS, timeout=3)
         if not element:
             return self
         self._safe_click(element)
@@ -116,10 +126,10 @@ class LoginPage:
                 f"Не удалось найти кликабельный ADFS-элемент по локаторам: {self.ADFS_LINK_LOCATORS}")
         self._safe_click(element)
 
-    def _find_first_clickable(self, locators):
+    def _find_first_clickable(self, locators, timeout=3):
         for locator in locators:
             try:
-                return WebDriverWait(self.driver, 3).until(EC.element_to_be_clickable(locator))
+                return WebDriverWait(self.driver, timeout).until(EC.element_to_be_clickable(locator))
             except TimeoutException:
                 continue
         return None
@@ -261,3 +271,37 @@ class LoginPage:
 
         print("⚠️ Ошибка 400 не найдена в логах")
         return False
+
+    def login_with_network_check(self, username=None, password=None, expect_success=True):
+        if username is None:
+            username = config.ADMIN_EMAIL
+        if password is None:
+            password = config.ADMIN_PASSWORD
+
+        print(f"🔐 Попытка входа с пользователем: {username}")
+
+        self.open()
+
+        WebDriverWait(self.driver, config.EXPLICIT_WAIT).until(
+            EC.presence_of_element_located(self.USERNAME_INPUT)
+        )
+
+        self.enter_username(username)
+        self.enter_password(password)
+
+        WebDriverWait(self.driver, config.EXPLICIT_WAIT).until(
+            EC.element_to_be_clickable(self.LOGIN_BUTTON)
+        )
+
+        self.click_login_button()
+
+        if expect_success:
+            if self.wait_for_successful_login():
+                print("✅ Успешный вход")
+                return 0
+            else:
+                error_code = self.get_network_error()
+                print(f"❌ Ошибка входа. Код ошибки: {error_code}")
+                return error_code
+        else:
+            return self.get_network_error()

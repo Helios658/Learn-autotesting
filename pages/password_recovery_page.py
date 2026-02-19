@@ -3,12 +3,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from config import config
+from pages.base_page import BasePage
 
 
-class PasswordRecoveryPage:
+class PasswordRecoveryPage(BasePage):
     """Page Object для страницы восстановления пароля"""
 
     def __init__(self, driver):
+        super().__init__(driver)
         self.driver = driver
         self.wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
 
@@ -36,7 +38,7 @@ class PasswordRecoveryPage:
                 return WebDriverWait(self.driver, 3).until(condition(locator))
             except TimeoutException:
                 continue
-        raise TimeoutError(f"Не удалось найти элемент по локаторам: {locators}")
+        raise TimeoutException(f"Не удалось найти элемент по локаторам: {locators}")
 
     def request_password_recovery(self, email):
         """Запрос восстановления пароля"""

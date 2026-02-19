@@ -8,7 +8,12 @@ from config import config
 
 def test_logout_menu(login_page, driver):
     wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
-    error_code = login_page.login_with_network_check(expect_success=True)
+    # Передаем логин и пароль
+    error_code = login_page.login_with_network_check(
+        username=config.ADMIN_EMAIL,
+        password=config.ADMIN_PASSWORD,
+        expect_success=True
+    )
     assert error_code == 0
     print("✅ Залогинились")
 
@@ -29,7 +34,12 @@ def test_logout_menu(login_page, driver):
 
 def test_logout_profile(login_page, driver):
     wait = WebDriverWait(driver, config.EXPLICIT_WAIT)
-    error_code = login_page.login_with_network_check(expect_success=True)
+    # Передаем логин и пароль
+    error_code = login_page.login_with_network_check(
+        username=config.ADMIN_EMAIL,
+        password=config.ADMIN_PASSWORD,
+        expect_success=True
+    )
     assert error_code == 0
     print("✅ Залогинились")
 

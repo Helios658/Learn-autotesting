@@ -1,19 +1,12 @@
-# tests/test_login.py
 import time
-
 import pytest
 from config import config
+
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30381")
 def test_30381_registered_user_can_login(login_page):
-    """
-    #30381: Вход в систему зарегистрированного пользователя (smoketest).
-
-    Важно: после клика "Войти" может быть небольшая задержка редиректа,
-    поэтому используем явное ожидание успешного перехода.
-    """
     username = config.ADMIN_EMAIL
     password = config.ADMIN_PASSWORD
 
@@ -40,6 +33,7 @@ def test_30381_registered_user_can_login(login_page):
         )
 
 
+# ВАЖНО: следующая функция должна быть на том же уровне, что и первая (БЕЗ ОТСТУПА)
 def test_invalid_password(login_page):
     """Неверный пароль - проверяем ошибку 400"""
     print("🧪 Тест: вход с неверным паролем (ожидаем 400)")
@@ -55,8 +49,10 @@ def test_invalid_password(login_page):
 
     print("✅ Тест пройден: ошибка 400 корректно возвращается сервером")
 
+
+# И так далее для всех функций - все на одном уровне (без отступа)
 def test_ldap_login(login_page):
-    #Логин LDAP user
+    # Логин LDAP user
     username_ldap = config.TEST_LDAP_USER_EMAIL
     password_ldap = config.TEST_LDAP_USER_PASSWORD
 
@@ -78,6 +74,7 @@ def test_ldap_login(login_page):
             f"Не удалось войти: URL остался {login_page.driver.current_url}, "
             f"network_error={error_code}. Проверьте тестовые данные/окружение."
         )
+
 
 def test_adfs_login(login_page):
     # Логин ADFS
