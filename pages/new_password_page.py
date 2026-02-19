@@ -59,12 +59,65 @@ class NewPasswordPage:
 
         raise TimeoutError(f"Не удалось найти элемент по селекторам: {selectors}")
 
+    def _find_visible_password_inputs_any_context(self, timeout_ms=None):
+        timeout_ms = timeout_ms or config.EXPLICIT_WAIT * 1000
+        import time
+        deadline = time.time() + (timeout_ms / 1000)
+
+        while time.time() < deadline:
+            # default content
+            page_passwords = self.page.locator("input[type='password']")
+            visible_page_passwords = [
+                page_passwords.nth(i)
+                for i in range(page_passwords.count())
+                if page_passwords.nth(i).is_visible()
+            ]
+            if len(visible_page_passwords) >= 2:
+                return visible_page_passwords[0], visible_page_passwords[1]
+
+            # frames
+            for frame in self.page.frames:
+                try:
+                    frame_passwords = frame.locator("input[type='password']")
+                    visible_frame_passwords = [
+                        frame_passwords.nth(i)
+                        for i in range(frame_passwords.count())
+                        if frame_passwords.nth(i).is_visible()
+                    ]
+                    if len(visible_frame_passwords) >= 2:
+                        return visible_frame_passwords[0], visible_frame_passwords[1]
+                except Exception:
+                    continue
+
+            self.page.wait_for_timeout(250)
+
+        return None, None
+
     def set_new_password(self, new_password):
+        self.page.wait_for_url("**/login/new-password**", timeout=config.EXPLICIT_WAIT * 2000)
         self.page.wait_for_load_state("domcontentloaded")
         self.page.wait_for_timeout(1200)
 
-        new_password_input = self._first_visible_any_context(self.NEW_PASSWORD_INPUTS, timeout_ms=config.EXPLICIT_WAIT * 2000)
-        confirm_password_input = self._first_visible_any_context(self.CONFIRM_PASSWORD_INPUTS, timeout_ms=config.EXPLICIT_WAIT * 2000)
+        new_password_input = None
+        confirm_password_input = None
+        try:
+            new_password_input = self._first_visible_any_context(
+                self.NEW_PASSWORD_INPUTS,
+                timeout_ms=config.EXPLICIT_WAIT * 2000,
+            )
+            confirm_password_input = self._first_visible_any_context(
+                self.CONFIRM_PASSWORD_INPUTS,
+                timeout_ms=config.EXPLICIT_WAIT * 2000,
+            )
+        except Exception:
+            pass
+
+        if not new_password_input or not confirm_password_input:
+            new_password_input, confirm_password_input = self._find_visible_password_inputs_any_context(
+                timeout_ms=config.EXPLICIT_WAIT * 2000,
+            )
+        if not new_password_input or not confirm_password_input:
+            raise TimeoutError("Не удалось найти два видимых password-поля на странице восстановления")
 
         new_password_input.fill(new_password)
         confirm_password_input.fill(new_password)
