@@ -41,23 +41,46 @@ class NewPasswordPage:
         while time.time() < deadline:
             # default content
             for selector in selectors:
-                locator = self.page.locator(selector).first
-                if locator.count() > 0 and locator.is_visible():
-                    return locator
+                locator = self.page.locator(selector)
+                count = locator.count()
+                for i in range(count):
+                    candidate = locator.nth(i)
+                    try:
+                        if candidate.is_visible():
+                            return candidate
+                    except Exception:
+                        continue
 
             # frames
             for frame in self.page.frames:
                 for selector in selectors:
-                    locator = frame.locator(selector).first
+                    locator = frame.locator(selector)
                     try:
-                        if locator.count() > 0 and locator.is_visible():
-                            return locator
+                        count = locator.count()
+                        for i in range(count):
+                            candidate = locator.nth(i)
+                            try:
+                                if candidate.is_visible():
+                                    return candidate
+                            except Exception:
+                                continue
                     except Exception:
                         continue
 
             self.page.wait_for_timeout(250)
 
         raise TimeoutError(f"Не удалось найти элемент по селекторам: {selectors}")
+
+    def _debug_dump(self, suffix="new_password_debug"):
+        try:
+            self.page.screenshot(path=f"{suffix}.png", full_page=True)
+        except Exception:
+            pass
+        try:
+            with open(f"{suffix}.html", "w", encoding="utf-8") as file:
+                file.write(self.page.content())
+        except Exception:
+            pass
 
     def _find_visible_password_inputs_any_context(self, timeout_ms=None):
         timeout_ms = timeout_ms or config.EXPLICIT_WAIT * 1000
@@ -122,7 +145,11 @@ class NewPasswordPage:
         new_password_input.fill(new_password)
         confirm_password_input.fill(new_password)
 
-        save_button = self._first_visible_any_context(self.SAVE_BUTTONS)
+        try:
+            save_button = self._first_visible_any_context(self.SAVE_BUTTONS)
+        except Exception:
+            self._debug_dump("new_password_save_button_not_found")
+            raise
         try:
             save_button.click(timeout=5000)
         except Exception:
