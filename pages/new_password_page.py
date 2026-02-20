@@ -23,8 +23,10 @@ class NewPasswordPage:
         ]
         self.SAVE_BUTTONS = [
             "xpath=//span[contains(text(), 'Изменить пароль')]/ancestor::button[1]",
+            "xpath=//button[.//span[contains(normalize-space(.), 'Изменить пароль')]]",
             "xpath=//button[contains(., 'Изменить пароль') or contains(., 'Сохранить') or contains(., 'Save')]",
             "button[type='submit']",
+            "button.iva-button",
             "[e2e-id*='save']",
         ]
         self.LOGIN_LINKS = [
@@ -145,15 +147,41 @@ class NewPasswordPage:
         new_password_input.fill(new_password)
         confirm_password_input.fill(new_password)
 
+        save_button = None
         try:
             save_button = self._first_visible_any_context(self.SAVE_BUTTONS)
         except Exception:
+            # fallback: берем первую видимую кнопку с текстом про изменение/сохранение пароля
+            buttons = self.page.locator("button")
+            for i in range(buttons.count()):
+                candidate = buttons.nth(i)
+                try:
+                    if not candidate.is_visible():
+                        continue
+                    text = (candidate.inner_text() or "").strip().lower()
+                    if any(token in text for token in ("изменить", "сохранить", "save", "парол")):
+                        save_button = candidate
+                        break
+                except Exception:
+                    continue
+        if save_button is None:
             self._debug_dump("new_password_save_button_not_found")
-            raise
+            # финальный fallback: Enter в поле подтверждения
+            try:
+                confirm_password_input.press("Enter")
+                return
+            except Exception:
+                raise
         try:
             save_button.click(timeout=5000)
         except Exception:
-            save_button.click(force=True)
+            try:
+                save_button.click(force=True)
+            except Exception:
+                try:
+                    save_button.press("Enter")
+                except Exception:
+                    self.page.evaluate("el => el.click()", save_button.element_handle())
 
         self.page.wait_for_timeout(1000)
 
