@@ -5,6 +5,7 @@
 pip install -r requirements.txt
 python -m playwright install --with-deps chromium
 ```
+> Важно: `allure-pytest==2.13.2` сейчас совместим с `pytest<9`, поэтому в проекте зафиксирован `pytest==8.3.5`.
 
 ## Запуск тестов
 ```bash
@@ -21,6 +22,20 @@ pytest tests/test_login.py::test_30381_registered_user_can_login -v
 pytest --alluredir=reports/allure-results
 allure serve reports/allure-results
 ```
+## Рекомендуемая интеграция с Allure TestOps (один правильный вариант)
+Проект настроен на **native-загрузку результатов напрямую из GitLab CI через `allurectl watch`**.
+
+### Что нужно добавить в CI/CD Variables в GitLab
+- `ALLURE_ENDPOINT` — URL вашего Allure TestOps (например, `https://allure.example.com`)
+- `ALLURE_TOKEN` — персональный токен пользователя/бота в Allure TestOps
+- `ALLURE_PROJECT_ID` — ID проекта в Allure TestOps
+- `ALLURE_LAUNCH_NAME` *(опционально)* — шаблон имени запуска (если не задан, allurectl возьмёт имя по умолчанию)
+
+После этого pipeline сам:
+1. запускает `pytest`;
+2. пишет результаты в `allure-results`;
+3. отправляет их в TestOps через `allurectl watch`;
+4. прикладывает `allure-results` как артефакт.
 
 ## Переменные из .env
 ```env

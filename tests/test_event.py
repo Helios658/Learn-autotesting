@@ -101,7 +101,7 @@ def _disable_overlay_pointer_events(page):
         """
     )
 
-
+@pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30887")
 def test_30887_events_one_time_login_only(login_page, driver):

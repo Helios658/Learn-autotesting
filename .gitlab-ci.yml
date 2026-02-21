@@ -7,6 +7,7 @@ variables:
   HEADLESS_MODE: "true"
   TEST_BASE_URL: "https://gamma.hi-tech.org"
   TEST_USER_EMAIL: "v.kornienko@iva.ru"
+  ALLURE_RESULTS: "allure-results"
 
 cache:
   paths:
@@ -21,8 +22,26 @@ full_e2e_tests:
     - pip install -r requirements.txt
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
+    - mkdir -p "${ALLURE_RESULTS}"
+    - |
+      if [[ -z "${ALLURE_ENDPOINT}" || -z "${ALLURE_TOKEN}" || -z "${ALLURE_PROJECT_ID}" ]]; then
+        echo "❌ Missing required Allure TestOps variables: ALLURE_ENDPOINT, ALLURE_TOKEN, ALLURE_PROJECT_ID"
+        exit 1
+      fi
+    - curl -fsSL -o /usr/local/bin/allurectl https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64
+    - chmod +x /usr/local/bin/allurectl
+    - |
+      cat > "${ALLURE_RESULTS}/executor.json" <<EOF
+      {
+        "name": "GitLab CI",
+        "type": "gitlab",
+        "buildName": "${CI_PROJECT_PATH}#${CI_PIPELINE_ID}",
+        "buildUrl": "${CI_PIPELINE_URL}",
+        "reportUrl": "${CI_JOB_URL}"
+      }
+      EOF
   script:
-    - pytest -v --headless --junitxml=report.xml
+    - allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir="${ALLURE_RESULTS}"
   after_script:
     - echo "Tests finished"
   artifacts:
@@ -32,3 +51,4 @@ full_e2e_tests:
     paths:
       - report.xml
       - last_generated_password.txt
+      - allure-results

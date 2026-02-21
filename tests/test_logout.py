@@ -1,7 +1,11 @@
+import pytest
 from config import config
 
 
-def test_logout_menu(login_page, driver):
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30545")
+def test_30545_logout_menu(login_page, driver):
     error_code = login_page.login_with_network_check(
         username=config.ADMIN_EMAIL,
         password=config.ADMIN_PASSWORD,
@@ -13,8 +17,10 @@ def test_logout_menu(login_page, driver):
     driver.locator("[e2e-id='profile-action__logout']").first.click()
     driver.wait_for_url("**/login**", timeout=config.EXPLICIT_WAIT * 1000)
 
-
-def test_logout_profile(login_page, driver):
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30255")
+def test_30255_logout_profile(login_page, driver):
     error_code = login_page.login_with_network_check(
         username=config.ADMIN_EMAIL,
         password=config.ADMIN_PASSWORD,

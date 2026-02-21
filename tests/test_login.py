@@ -27,8 +27,10 @@ def test_30381_registered_user_can_login(login_page):
             f"network_error={error_code}. Проверьте тестовые данные/окружение."
         )
 
-
-def test_invalid_password(login_page):
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("31407")
+def test_31407_invalid_password(login_page):
     login_page.open()
     login_page.enter_username(config.ADMIN_EMAIL)
     login_page.enter_password("wrong_password_123")
@@ -37,8 +39,10 @@ def test_invalid_password(login_page):
     has_400_error = login_page.check_400_error()
     assert has_400_error, "Не обнаружена ошибка 400 при неверном пароле"
 
-
-def test_ldap_login(login_page):
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("31410")
+def test_31410_ldap_login(login_page):
     username_ldap = config.TEST_LDAP_USER_EMAIL
     password_ldap = config.TEST_LDAP_USER_PASSWORD
 
@@ -59,8 +63,10 @@ def test_ldap_login(login_page):
             f"network_error={error_code}. Проверьте тестовые данные/окружение."
         )
 
-
-def test_adfs_login(login_page):
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30296")
+def test_30296_adfs_login(login_page):
     username_adfs = config.TEST_ADFS_USER_EMAIL
     password_adfs = config.TEST_ADFS_USER_PASSWORD
 
