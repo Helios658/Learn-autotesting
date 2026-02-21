@@ -4,8 +4,8 @@ stages:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   CI: "true"
-  HEADLESS_MODE: "true"
   TEST_BASE_URL: "https://gamma.hi-tech.org"
+  HEADLESS_MODE: "true"
   TEST_USER_EMAIL: "v.kornienko@iva.ru"
 
 cache:
@@ -14,15 +14,48 @@ cache:
 
 full_e2e_tests:
   stage: test
-  image: mcr.microsoft.com/playwright/python:v1.51.0-jammy
+  image: mcr.microsoft.com/playwright/python:v1.55.0-jammy
   tags:
     - docker_last
   before_script:
     - pip install -r requirements.txt
+    - mkdir -p allure-results
+    - |
+      cat > allure-results/environment.properties <<EOF
+      ENV=CI
+      BASE_URL=${TEST_BASE_URL}
+      HEADLESS=${HEADLESS_MODE}
+      BROWSER=chromium
+      EOF
+    - |
+      cat > allure-results/executor.json <<EOF
+      {
+        "name": "GitLab CI",
+        "type": "gitlab",
+        "url": "${CI_PROJECT_URL}",
+        "buildOrder": "${CI_PIPELINE_ID}",
+        "buildName": "${CI_JOB_NAME}",
+        "buildUrl": "${CI_PIPELINE_URL}",
+        "reportName": "UI E2E"
+      }
+      EOF
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
-    - pytest -v --headless --junitxml=report.xml
+    - pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+    - |
+      if [ -n "${ALLURE_ENDPOINT}" ] && [ -n "${ALLURE_TOKEN}" ] && [ -n "${ALLURE_PROJECT_ID}" ]; then
+        curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
+        chmod +x /usr/local/bin/allurectl
+        allurectl upload allure-results \
+          --endpoint "${ALLURE_ENDPOINT}" \
+          --token "${ALLURE_TOKEN}" \
+          --project-id "${ALLURE_PROJECT_ID}" \
+          --launch-name "${CI_PROJECT_NAME} #${CI_PIPELINE_ID}" \
+          --launch-tags "${CI_COMMIT_REF_NAME},gitlab"
+      else
+        echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> skip Allure TestOps upload"
+      fi
   after_script:
     - echo "Tests finished"
   artifacts:
@@ -31,4 +64,5 @@ full_e2e_tests:
       junit: report.xml
     paths:
       - report.xml
+      - allure-results/
       - last_generated_password.txt

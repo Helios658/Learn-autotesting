@@ -1,0 +1,3 @@
+🚀 Запуск Playwright в headless-режиме
+ℹ️ Кликаем ADFS провайдер: Войти через ADFS(login+password) | URL до клика: https://gamma.hi-tech.org/v2/login
+✅ Уже на странице ADFS: https://adfs.sfb.local/adfs/ls/IdpInitiatedsignon.aspx?SAMLRequest=fZFdT8IwFIb%2FStP77qPALA0bQQmRBJXA8MIb021la7K1s6cj%2Bu%2BdfBi8wNv27fv0PGcy%2FWxqdJAWlNExDr0AI6lzUyhdxniXLgjD02QCoqlpy2edq%2FRGfnQSHOofauCnmxh3VnMjQAHXopHAXc63s6cVp17AW2ucyU2N0QxAWtejHoyGrpF2K%2B1B5XK3WcW4cq4F7vulaBrhVYo4mVeesaUvWuXbnum3XVar3AdVaqXJDxuj5TzG7yIKM8pYQbIxG5HhIBOEsWBM9mE2iOTwTkqW9VGATi41OKFdjGlAIxJQQsOUhnw05gPmRSx6w2h9%2FvC90icR%2F02XnULAH9N0TdYv2xSj14vQPoDP%2BviRbq%2B9%2FV8sLrJwclPNxL%2Fu%2Fl3Uc1%2B2nK9NL%2BsLLYxthLvNCr3weKIKsj9GeaehlbnaK1lgPzkz%2Fq4%2F%2BQY%3D&RelayState=https%3A%2F%2Fgamma.hi-tech.org%2Fv2%2Fiva%2Fhome

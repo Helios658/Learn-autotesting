@@ -1,0 +1,4 @@
+🚀 Запуск Playwright в headless-режиме
+📁 Прочитан динамический пароль из last_generated_password.txt
+📁 Используем пароль из last_generated_password.txt
+📋 Сгенерирован и сохранен пароль: $!89oL%Hw3eu

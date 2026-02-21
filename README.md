@@ -5,7 +5,6 @@
 pip install -r requirements.txt
 python -m playwright install --with-deps chromium
 ```
-> Важно: `allure-pytest==2.13.2` сейчас совместим с `pytest<9`, поэтому в проекте зафиксирован `pytest==8.3.5`.
 
 ## Запуск тестов
 ```bash
@@ -18,24 +17,21 @@ pytest --headless -v
 # Конкретный тест
 pytest tests/test_login.py::test_30381_registered_user_can_login -v
 
-# С отчетом Allure
-pytest --alluredir=reports/allure-results
-allure serve reports/allure-results
+# Локальный Allure-отчет
+pytest -v --headless --alluredir=allure-results
+allure serve allure-results
 ```
-## Рекомендуемая интеграция с Allure TestOps (один правильный вариант)
-Проект настроен на **native-загрузку результатов напрямую из GitLab CI через `allurectl watch`**.
 
-### Что нужно добавить в CI/CD Variables в GitLab
-- `ALLURE_ENDPOINT` — URL вашего Allure TestOps (например, `https://allure.example.com`)
-- `ALLURE_TOKEN` — персональный токен пользователя/бота в Allure TestOps
-- `ALLURE_PROJECT_ID` — ID проекта в Allure TestOps
-- `ALLURE_LAUNCH_NAME` *(опционально)* — шаблон имени запуска (если не задан, allurectl возьмёт имя по умолчанию)
+## Allure TestOps (опционально)
+Если нужен автозалив результатов в TestOps из CI, добавьте переменные в GitLab CI/CD Variables:
 
-После этого pipeline сам:
-1. запускает `pytest`;
-2. пишет результаты в `allure-results`;
-3. отправляет их в TestOps через `allurectl watch`;
-4. прикладывает `allure-results` как артефакт.
+```text
+ALLURE_ENDPOINT=https://<your-company>.testops.cloud
+ALLURE_PROJECT_ID=<project_id>
+ALLURE_TOKEN=<token>
+```
+
+После этого job сам загрузит `allure-results` через `allurectl`.
 
 ## Переменные из .env
 ```env
@@ -56,3 +52,8 @@ TEST_ADFS_USER_PASSWORD=
 ```bash
 git add --all :!.env :!.env.* :!*.secret :!*.key :!last_generated_password.txt
 ```
+
+
+## CI артефакты
+- `report.xml` (JUnit)
+- `allure-results/` (сырые данные для Allure Report/TestOps)
