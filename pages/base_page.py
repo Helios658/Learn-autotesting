@@ -10,9 +10,24 @@ class BasePage:
         deadline = time.time() + timeout / 1000
         while time.time() < deadline:
             for selector in selectors:
-                locator = self.page.locator(selector)
-                if locator.count() > 0 and locator.first.is_visible():
-                    return locator.first
+                try:
+                    locator = self.page.locator(selector)
+                    for i in range(locator.count()):
+                        candidate = locator.nth(i)
+                        if candidate.is_visible():
+                            return candidate
+                except Exception:
+                    pass
+
+                for frame in self.page.frames:
+                    try:
+                        frame_locator = frame.locator(selector)
+                        for i in range(frame_locator.count()):
+                            candidate = frame_locator.nth(i)
+                            if candidate.is_visible():
+                                return candidate
+                    except Exception:
+                        continue
             self.page.wait_for_timeout(200)
         raise PlaywrightTimeoutError(f"Не удалось найти видимый элемент по локаторам: {selectors}")
 
