@@ -19,6 +19,7 @@ full_e2e_tests:
     - docker_last
   before_script:
     - pip install -r requirements.txt
+    - rm -rf allure-results
     - mkdir -p allure-results
     - |
       cat > allure-results/environment.properties <<EOF

@@ -1,1 +1,0 @@
-🚀 Запуск Playwright в headless-режиме
