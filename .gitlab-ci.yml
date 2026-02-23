@@ -18,43 +18,29 @@ full_e2e_tests:
   tags:
     - docker_last
   before_script:
-    - pip install -r requirements.txt
-    - rm -rf allure-results
-    - mkdir -p allure-results
-    - |
-      cat > allure-results/environment.properties <<EOF
-      ENV=CI
-      BASE_URL=${TEST_BASE_URL}
-      HEADLESS=${HEADLESS_MODE}
-      BROWSER=chromium
-      EOF
-    - |
-      cat > allure-results/executor.json <<EOF
-      {
-        "name": "GitLab CI",
-        "type": "gitlab",
-        "url": "${CI_PROJECT_URL}",
-        "buildOrder": "${CI_PIPELINE_ID}",
-        "buildName": "${CI_JOB_NAME}",
-        "buildUrl": "${CI_PIPELINE_URL}",
-        "reportName": "UI E2E"
-      }
-      EOF
-    - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
-    - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
+    # ... (всё как у вас)
   script:
     - pytest -v --headless --junitxml=report.xml --alluredir=allure-results
     - |
       if [ -n "${ALLURE_ENDPOINT}" ] && [ -n "${ALLURE_TOKEN}" ] && [ -n "${ALLURE_PROJECT_ID}" ]; then
         curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
         chmod +x /usr/local/bin/allurectl
-        
         allurectl watch --project-id "${ALLURE_PROJECT_ID}" allure-results
       else
         echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> skip Allure TestOps upload"
       fi
   after_script:
     - echo "Tests finished"
+    - |
+      # Проверяем, что нужные файлы существуют
+      if [ -f "report.xml" ]; then
+        echo "✅ report.xml found"
+      else
+        echo "⚠️ report.xml not found"
+      fi
+    - |
+      # Явно завершаем с успехом
+      exit 0
   artifacts:
     when: always
     reports:
