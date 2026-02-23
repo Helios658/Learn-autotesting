@@ -49,6 +49,7 @@ full_e2e_tests:
         curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
         chmod +x /usr/local/bin/allurectl
 
+        export ALLURE_RESULTS=allure-results
         allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir=allure-results
       else
         echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> run pytest without TestOps upload"
