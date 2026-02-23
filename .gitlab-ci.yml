@@ -19,7 +19,6 @@ full_e2e_tests:
     - docker_last
   before_script:
     - pip install -r requirements.txt
-    - python -m pip install --upgrade "playwright==1.55.0"
     - rm -rf allure-results
     - mkdir -p allure-results
     - |
@@ -44,15 +43,15 @@ full_e2e_tests:
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
+    - pytest -v --headless --junitxml=report.xml --alluredir=allure-results
     - |
       if [ -n "${ALLURE_ENDPOINT}" ] && [ -n "${ALLURE_TOKEN}" ] && [ -n "${ALLURE_PROJECT_ID}" ]; then
         curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
         chmod +x /usr/local/bin/allurectl
-
-        allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+        
+        allurectl watch --project-id "${ALLURE_PROJECT_ID}" allure-results
       else
-        echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> run pytest without TestOps upload"
-        pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+        echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> skip Allure TestOps upload"
       fi
   after_script:
     - echo "Tests finished"
