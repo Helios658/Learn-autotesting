@@ -43,7 +43,12 @@ full_e2e_tests:
     - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
     - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
-    - pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+    - |
+      set +e
+      pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+      PYTEST_EXIT=$?
+      set -e
+      echo "Pytest exit code: ${PYTEST_EXIT}"
     - |
       if [ -n "${ALLURE_ENDPOINT}" ] && [ -n "${ALLURE_TOKEN}" ] && [ -n "${ALLURE_PROJECT_ID}" ]; then
         curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
@@ -57,6 +62,7 @@ full_e2e_tests:
       else
         echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> skip Allure TestOps upload"
       fi
+    - exit ${PYTEST_EXIT}
   after_script:
     - echo "Tests finished"
   artifacts:
