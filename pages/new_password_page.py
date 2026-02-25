@@ -119,7 +119,7 @@ class NewPasswordPage:
         return None, None
 
     def set_new_password(self, new_password):
-        self.page.wait_for_url("**/login/new-password**", timeout=config.EXPLICIT_WAIT * 2000)
+        self.page.wait_for_url("**/login/new-password**", timeout=config.EXPLICIT_WAIT * 1000)
         self.page.wait_for_load_state("domcontentloaded")
         self.page.wait_for_timeout(1200)
 
@@ -128,18 +128,18 @@ class NewPasswordPage:
         try:
             new_password_input = self._first_visible_any_context(
                 self.NEW_PASSWORD_INPUTS,
-                timeout_ms=config.EXPLICIT_WAIT * 2000,
+                timeout_ms=config.EXPLICIT_WAIT * 1000,
             )
             confirm_password_input = self._first_visible_any_context(
                 self.CONFIRM_PASSWORD_INPUTS,
-                timeout_ms=config.EXPLICIT_WAIT * 2000,
+                timeout_ms=config.EXPLICIT_WAIT * 1000,
             )
         except Exception:
             pass
 
         if not new_password_input or not confirm_password_input:
             new_password_input, confirm_password_input = self._find_visible_password_inputs_any_context(
-                timeout_ms=config.EXPLICIT_WAIT * 2000,
+                timeout_ms=config.EXPLICIT_WAIT * 1000,
             )
         if not new_password_input or not confirm_password_input:
             raise TimeoutError("Не удалось найти два видимых password-поля на странице восстановления")

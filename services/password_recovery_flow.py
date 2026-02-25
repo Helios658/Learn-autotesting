@@ -20,9 +20,7 @@ class PasswordRecoveryFlow:
         self.login_page.open()
 
         # 2. Переход к восстановлению пароля
-        self.driver.locator(
-            "[e2e-id='login-page.login-form.recovery-password-link']"
-        ).first.click()
+        self.login_page.go_to_password_recovery()
 
         # 3. Запрос восстановления
         self.recovery_page.request_password_recovery(config.USER_EMAIL)

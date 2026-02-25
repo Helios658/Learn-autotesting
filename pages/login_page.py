@@ -4,7 +4,6 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from config import config
 from pages.base_page import BasePage
 
-
 class LoginPage(BasePage):
     def __init__(self, page):
         super().__init__(page)
@@ -99,7 +98,15 @@ class LoginPage(BasePage):
         self._ensure_response_tracking()
         self._response_statuses.clear()
         self.page.goto(self.URL, wait_until="domcontentloaded")
-        self.page.locator(self.USERNAME_INPUT).first.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 2000)
+        timeout_ms = config.EXPLICIT_WAIT * 1000
+        self.page.locator(self.USERNAME_INPUT).first.wait_for(state="visible", timeout=timeout_ms)
+        return self
+
+    def go_to_password_recovery(self):
+        """Переход к восстановлению пароля со страницы логина."""
+        self.page.locator(
+            "[e2e-id='login-page.login-form.recovery-password-link']"
+        ).first.click()
         return self
 
     def enter_username(self, username):
