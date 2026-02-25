@@ -65,3 +65,4 @@ full_e2e_tests:
       - report.xml
       - allure-results/
       - last_generated_password.txt
+      - artifacts/

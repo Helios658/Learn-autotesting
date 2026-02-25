@@ -1,10 +1,12 @@
 .idea
 __pycache__/
 venv/
-*.pycgit
+*.pyc
 .env
 .env.*
 *.secret
 *.key
 last_generated_password.txt
 allure-results/
+reports/
+artifacts/

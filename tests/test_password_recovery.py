@@ -5,55 +5,14 @@ from pages.password_recovery_page import PasswordRecoveryPage
 from pages.mail_page import MailPage
 from pages.new_password_page import NewPasswordPage
 from services.password_service import PasswordService
+from services.password_recovery_flow import PasswordRecoveryFlow
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("31411")
 def test_31411_password_recovery(driver):
-    login_page = LoginPage(driver)
-    login_page.open()
-
-    driver.locator("[e2e-id='login-page.login-form.recovery-password-link']").first.click()
-
-    recovery_page = PasswordRecoveryPage(driver)
-    recovery_page.request_password_recovery(config.USER_EMAIL)
-
-    try:
-        success_element = driver.locator("p.layout-bottom-margin_2.text-align_center").first
-        success_element.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        message_text = success_element.inner_text().lower()
-        if any(word in message_text for word in ["отправлен", "отправлены", "отправлено"]):
-            print(f"✅ Подтверждение отправки: '{success_element.inner_text()}'")
-    except Exception as e:
-        print(f"⚠️ Не дождались подтверждения: {e}")
-
-    try:
-        mail_page = MailPage(driver)
-        mail_page.login()
-        reset_link = mail_page.get_password_reset_link(wait_for_email=True)
-
-        driver.goto(reset_link)
-        password_service = PasswordService()
-        new_password = password_service.generate_and_persist_password()
-        new_password_page = NewPasswordPage(driver)
-        new_password_page.set_new_password(new_password)
-        new_password_page.go_to_login()
-
-        login_page.enter_username(config.USER_EMAIL)
-        login_page.enter_password(new_password)
-        login_page.click_login_button()
-
-        logged_in = login_page.wait_for_successful_login(timeout=config.EXPLICIT_WAIT * 2)
-        if not logged_in:
-            error_code = login_page.get_network_error()
-            pytest.fail(
-                f"После восстановления пароля не удалось войти: "
-                f"URL={driver.url}, network_error={error_code}"
-            )
-    except Exception as e:
-        if "почта" in str(e).lower() or "mail" in str(e).lower():
-            pytest.skip(f"Пропускаем тест из-за проблем с почтой: {e}")
-        raise
+    flow = PasswordRecoveryFlow(driver)
+    assert flow.run(), "Не удалось восстановить пароль и войти с новым"
 
 @pytest.mark.smoke
 @pytest.mark.buildtest

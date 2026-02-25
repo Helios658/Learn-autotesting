@@ -31,10 +31,31 @@ class BasePage:
             self.page.wait_for_timeout(200)
         raise PlaywrightTimeoutError(f"Не удалось найти видимый элемент по локаторам: {selectors}")
 
-    def _safe_click(self, selector_or_locator):
-        locator = selector_or_locator if hasattr(selector_or_locator, "click") else self.page.locator(selector_or_locator)
+    def safe_click(self, selector, timeout=5000):
+        """
+        Универсальный клик: scroll -> click -> force -> js click
+        """
+        locator = selector if hasattr(selector, "click") else self.page.locator(selector)
+
         try:
-            locator.first.scroll_into_view_if_needed()
-            locator.first.click()
+            locator.first.scroll_into_view_if_needed(timeout=timeout)
         except Exception:
-            self.page.evaluate("(el) => el.click()", locator.first.element_handle())
+            pass
+
+        try:
+            locator.first.click(timeout=timeout)
+            return
+        except Exception:
+            pass
+
+        try:
+            locator.first.click(force=True, timeout=2000)
+            return
+        except Exception:
+            pass
+
+        try:
+            handle = locator.first.element_handle(timeout=1000)
+            self.page.evaluate("(el) => el.click()", handle)
+        except Exception as e:
+            raise PlaywrightTimeoutError(f"safe_click failed for selector={selector}: {e}")

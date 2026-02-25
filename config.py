@@ -96,3 +96,5 @@ if __name__ == "__main__":
     print(f"USER_EMAIL: {config.USER_EMAIL}")
     print(f"USER_PASSWORD: {'*' * len(config.USER_PASSWORD) if config.USER_PASSWORD else '(пусто)'}")
     print(f"Пароль из файла: {get_dynamic_password()}")
+
+
