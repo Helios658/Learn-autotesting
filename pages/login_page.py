@@ -340,23 +340,6 @@ class LoginPage(BasePage):
                 return status
         return 0
 
-    def login_with_network_check(self, username=None, password=None, expect_success=True):
-        username = username or config.ADMIN_EMAIL
-        password = password or config.ADMIN_PASSWORD
-
-        self.open()
-        self.enter_username(username)
-        self.enter_password(password)
-        self.click_login_button()
-
-        if expect_success:
-            if self.wait_for_successful_login(timeout=config.EXPLICIT_WAIT * 2):
-                return 0
-            return self.get_network_error()
-
-        self.page.wait_for_timeout(2000)
-        return self.get_network_error()
-
     def check_400_error(self, timeout=5):
         error_text_locators = [
             "text=Неверный логин или пароль",
