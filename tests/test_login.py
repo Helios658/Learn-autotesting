@@ -42,3 +42,6 @@ def test_30296_adfs_login(login_page):
     assert login_page.get_entered_password_adfs() == password_adfs
 
     login_page.click_login_button_adfs()
+    assert login_page.wait_for_successful_login(timeout=config.EXPLICIT_WAIT * 2), (
+        f"ADFS логин неуспешен, текущий URL: {login_page.page.url}"
+    )

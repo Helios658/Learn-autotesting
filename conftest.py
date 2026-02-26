@@ -6,6 +6,7 @@ from datetime import datetime
 
 from utils.artifacts import save_artifacts
 from config import config
+import socket
 
 load_dotenv()
 
@@ -39,6 +40,24 @@ def pytest_runtest_makereport(item, call):
 
         report.sections.append(("artifacts", f"{paths}"))
 
+@pytest.fixture(scope="session", autouse=True)
+def validate_test_base_url():
+    """Проверяет, что TEST_BASE_URL резолвится до запуска e2e-тестов."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(config.BASE_URL)
+    host = parsed.hostname
+
+    if not host:
+        pytest.skip("TEST_BASE_URL не задан или некорректен (не удалось извлечь host)")
+
+    try:
+        socket.gethostbyname(host)
+    except socket.gaierror:
+        pytest.skip(
+            f"Хост TEST_BASE_URL не резолвится: {host}. "
+            "Проверьте переменную окружения TEST_BASE_URL и DNS/VPN."
+        )
 
 @pytest.fixture(scope="session")
 def playwright_instance() -> Playwright:

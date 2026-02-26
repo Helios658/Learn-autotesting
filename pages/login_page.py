@@ -333,6 +333,23 @@ class LoginPage(BasePage):
     def click_login_button_adfs(self):
         self._find_any_context(self.LOGIN_BUTTON_ADFS_LOCATORS).click()
         return self
+    def login_with_network_check(self, username, password, expect_success=True, timeout=None):
+        timeout = timeout or config.EXPLICIT_WAIT
+
+        self._ensure_response_tracking()
+        self._response_statuses.clear()
+
+        self.enter_username(username)
+        self.enter_password(password)
+        self.click_login_button()
+
+        if expect_success and not self.wait_for_successful_login(timeout=timeout * 2):
+            error_code = self.get_network_error()
+            raise AssertionError(
+                f"Логин неуспешен: URL={self.page.url}, network_error={error_code}"
+            )
+
+        return self.get_network_error()
 
     def get_network_error(self):
         for status in reversed(self._response_statuses[-100:]):

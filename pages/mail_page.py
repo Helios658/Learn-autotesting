@@ -18,12 +18,14 @@ class MailPage:
             return None
 
         variants = [text, unescape(text), unquote(unescape(text))]
-        pattern = r"https://gamma\.hi-tech\.org/v2/login/new-password[^\s<>\"']+"
+        base_url_pattern = rf"{re.escape(config.BASE_URL.rstrip('/'))}/v2/login/new-password[^\s<>\"']+"
+        fallback_pattern = r"https?://[^\s<>\"']+/v2/login/new-password[^\s<>\"']+"
 
         for variant in variants:
-            match = re.search(pattern, variant)
-            if match:
-                return unescape(match.group())
+            for pattern in (base_url_pattern, fallback_pattern):
+                match = re.search(pattern, variant)
+                if match:
+                    return unescape(match.group())
 
         return None
 

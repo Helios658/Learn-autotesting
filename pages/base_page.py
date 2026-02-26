@@ -1,4 +1,5 @@
 import time
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
@@ -16,8 +17,8 @@ class BasePage:
                         candidate = locator.nth(i)
                         if candidate.is_visible():
                             return candidate
-                except Exception:
-                    pass
+                except PlaywrightError:
+                    continue
 
                 for frame in self.page.frames:
                     try:
@@ -26,7 +27,7 @@ class BasePage:
                             candidate = frame_locator.nth(i)
                             if candidate.is_visible():
                                 return candidate
-                    except Exception:
+                    except PlaywrightError:
                         continue
             self.page.wait_for_timeout(200)
         raise PlaywrightTimeoutError(f"Не удалось найти видимый элемент по локаторам: {selectors}")
@@ -39,23 +40,25 @@ class BasePage:
 
         try:
             locator.first.scroll_into_view_if_needed(timeout=timeout)
-        except Exception:
+        except PlaywrightTimeoutError:
             pass
 
         try:
             locator.first.click(timeout=timeout)
             return
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
             pass
 
         try:
             locator.first.click(force=True, timeout=2000)
             return
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
             pass
 
         try:
             handle = locator.first.element_handle(timeout=1000)
+            if handle is None:
+                raise PlaywrightTimeoutError("element_handle вернул None")
             self.page.evaluate("(el) => el.click()", handle)
-        except Exception as e:
+        except (PlaywrightTimeoutError, PlaywrightError) as e:
             raise PlaywrightTimeoutError(f"safe_click failed for selector={selector}: {e}")

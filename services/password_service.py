@@ -12,10 +12,11 @@ class PasswordService:
         password = self.manager.generate_password()
         is_saved = self.manager.save_password(password)
 
+        masked_password = "*" * len(password)
         if is_saved:
-            print(f"📋 Сгенерирован и сохранен пароль: {password}")
+            print(f"📋 Сгенерирован и сохранен новый пароль: {masked_password}")
         else:
-            print(f"📋 Сгенерирован пароль: {password} (не сохранен в файл)")
+            print(f"📋 Сгенерирован новый пароль: {masked_password} (не сохранен в файл)")
 
         return password
 
