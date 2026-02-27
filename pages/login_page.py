@@ -333,6 +333,7 @@ class LoginPage(BasePage):
     def click_login_button_adfs(self):
         self._find_any_context(self.LOGIN_BUTTON_ADFS_LOCATORS).click()
         return self
+
     def login_with_network_check(self, username, password, expect_success=True, timeout=None):
         timeout = timeout or config.EXPLICIT_WAIT
 

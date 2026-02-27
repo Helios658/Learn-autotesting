@@ -16,6 +16,24 @@ class EventPage(BasePage):
 
     EVENT_LIST_SCROLLER = "virtual-scroller.selfScroll"
     HAMBURGER_BUTTON = "button.hamburger.iva-icon-button"
+    CONFERENCES_TAB_SETTINGS_LOCATORS = [
+        "[e2e-id='conference-tab__settings']",
+        "button[e2e-id='conference-tab__settings']",
+        "[e2e-id='conference-tab__setting']",
+        "button[e2e-id='conference-tab__setting']",
+        "xpath=//button[@e2e-id='conference-tab__settings' or @e2e-id='conference-tab__setting']",
+    ]
+    CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY = "[e2e-id='conference-session--settings--guest-link--copy-btn']"
+    GUEST_LINK_INPUT_LOCATORS = [
+        "input[e2e-id*='guest-link']",
+        "input[value*='#join:']",
+        "input[value*='join:']",
+        "input[readonly]",
+    ]
+    GUEST_LINK_ANCHOR_LOCATORS = [
+        "a[href*='#join:']",
+        "a[href*='join:']",
+    ]
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
@@ -75,3 +93,56 @@ class EventPage(BasePage):
             }
             """
         )
+
+    def _reveal_conference_controls(self):
+        viewport = self.page.viewport_size or {"width": 1920, "height": 1080}
+        top_y = max(int(viewport["height"] * 0.07), 1)
+
+        points = [
+            (int(viewport["width"] * 0.50), top_y),
+            (int(viewport["width"] * 0.75), top_y),
+            (int(viewport["width"] * 0.90), top_y),
+            (int(viewport["width"] * 0.96), top_y + 8),
+        ]
+        for x, y in points:
+            self.page.mouse.move(max(x, 1), max(y, 1), steps=10)
+            self.page.wait_for_timeout(120)
+
+    def open_event_settings(self):
+        for _ in range(4):
+            self._reveal_conference_controls()
+            try:
+                settings_button = self._find_first_visible(self.CONFERENCES_TAB_SETTINGS_LOCATORS, timeout=2500)
+                self.safe_click(settings_button)
+                return
+            except Exception:
+                continue
+
+        raise AssertionError(
+            "Не удалось открыть вкладку настроек мероприятия: кнопка settings не появилась после reveal controls"
+        )
+
+    def click_copy_guest_link(self):
+        self.page.locator(self.GUEST_LINK_COPY_BUTTON).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.GUEST_LINK_COPY_BUTTON)
+
+    def get_guest_link_url(self) -> str:
+        for selector in self.GUEST_LINK_INPUT_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            value = (locator.input_value() or "").strip()
+            if "join:" in value:
+                return value
+
+        for selector in self.GUEST_LINK_ANCHOR_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            href = (locator.get_attribute("href") or "").strip()
+            if "join:" in href:
+                return href
+
+        raise AssertionError("Не удалось получить guest-link из настроек мероприятия")

@@ -8,11 +8,6 @@ class LoginFlow:
         self.login_page = LoginPage(driver)
 
     def login(self, username: str, password: str, expect_success: bool = True, timeout: int | None = None) -> int:
-        """
-        Возвращает network_error_code (0 если успех).
-        Для expect_success=True — бросает AssertionError при неуспехе.
-        Для expect_success=False — НЕ падает, возвращает код (если был), иначе 0.
-        """
         timeout = timeout or config.EXPLICIT_WAIT
 
         # Используем твой трекинг ответов, он уже встроен в open()
@@ -34,6 +29,5 @@ class LoginFlow:
                 f"Логин неуспешен: URL={self.driver.url}, network_error={error_code}"
             )
 
-        # Негативный кейс: ждём чуть-чуть и возвращаем, что поймали
         self.driver.wait_for_timeout(2000)
         return self.login_page.get_network_error()

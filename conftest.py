@@ -17,10 +17,6 @@ def pytest_addoption(parser):
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
-    """
-    1) Сохраняем rep_* на item, чтобы фикстуры могли понять failed/success
-    2) Если упал — сохраняем screenshot+html (у тебя уже было)
-    """
     outcome = yield
     report = outcome.get_result()
 
@@ -40,9 +36,10 @@ def pytest_runtest_makereport(item, call):
 
         report.sections.append(("artifacts", f"{paths}"))
 
-@pytest.fixture(scope="session", autouse=True)
-def validate_test_base_url():
-    """Проверяет, что TEST_BASE_URL резолвится до запуска e2e-тестов."""
+@pytest.fixture(autouse=True)
+def validate_test_base_url(request):
+    if "driver" not in request.fixturenames and "login_page" not in request.fixturenames:
+        return
     from urllib.parse import urlparse
 
     parsed = urlparse(config.BASE_URL)

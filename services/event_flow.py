@@ -1,6 +1,9 @@
 import re
+import time
+
 from playwright.sync_api import Page
 from pages.event_page import EventPage
+from pages.guest_join_page import GuestJoinPage
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -16,7 +19,7 @@ class EventFlow:
         self.driver = driver
         self.event_page = EventPage(driver)
 
-    def create_event(self) -> str:
+    def create_event(self, return_to_list: bool = True) -> str:
         with self.driver.expect_response(
             lambda r: (
                 "/api/rest/conferences/start-now" in r.url
@@ -30,8 +33,8 @@ class EventFlow:
             self.event_page.select_groups_template()
             self.event_page.open_settings_and_close()
 
-            # если у тебя это уже было добавлено раньше — оставь
-            self.event_page.back_to_list()
+            if return_to_list:
+                self.event_page.back_to_list()
 
         body = response_info.value.json()
         event_id = body.get("conferenceSessionId") or body.get("id")
@@ -60,3 +63,30 @@ class EventFlow:
                 return card
 
         raise AssertionError(f"Не нашли мероприятие {target_event_id}")
+
+    def get_guest_link_for_event(self, target_event_id: str) -> str:
+        if target_event_id not in (self.driver.url or ""):
+            self.open_event_from_list(target_event_id)
+
+        self.event_page.open_event_settings()
+        return self.event_page.get_guest_link_url()
+
+    def open_guest_link_in_incognito(self, guest_url: str):
+        browser = self.driver.context.browser
+        if browser is None:
+            raise AssertionError("Не удалось получить browser из текущего driver context")
+
+        guest_context = browser.new_context(ignore_https_errors=True)
+        guest_page = guest_context.new_page()
+        guest_page.goto(guest_url, wait_until="domcontentloaded")
+        return guest_context, guest_page
+
+
+    def join_guest_via_link(self, guest_url: str, guest_name: str = "Auto Guest"):
+        guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
+        try:
+            GuestJoinPage(guest_page).join(guest_name)
+            guest_page.wait_for_load_state("domcontentloaded")
+            return guest_page.url
+        finally:
+            guest_context.close()
