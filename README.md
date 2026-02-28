@@ -1,13 +1,3 @@
-# Learn-autotesting
-
-## Установка зависимостей
-```bash
-pip install -r requirements.txt
-python -m playwright install --with-deps chromium
-```
-
-## Запуск тестов
-```bash
 # Все тесты
 pytest -v
 
@@ -38,6 +28,27 @@ ALLURE_TOKEN=<token>
 ```text
 ALLURE_LAUNCH_AUTO_CLOSE=true
 ```
+
+Для уведомления в Telegram лучше использовать **Webhooks в Allure TestOps** (а не отправку из CI):
+
+1. В TestOps откройте: **Настройки проекта → Webhooks**.
+2. Создайте webhook на событие завершения/закрытия запуска (Launch finished/closed).
+3. Для Telegram-бота укажите URL:
+
+```text
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
+```
+
+4. Пример JSON-тела (расширенный, с итогами запуска):
+
+```json
+{
+  "chat_id": "1834535141",
+  "text": "✅ Запуск \"{{launchName}}\" завершен\n📊 Total: {{total}} | Passed: {{passed}} | Failed: {{failed}} | Skipped: {{skipped}}\n🔗 {{launchUrl}}"
+}
+```
+
+> Если часть плейсхолдеров не поддерживается вашей версией TestOps, оставьте только `{{launchName}}` и `{{launchUrl}}`, а доступные переменные выберите из списка в форме webhook.
 
 ## Переменные из .env
 ```env
