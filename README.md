@@ -33,6 +33,12 @@ ALLURE_TOKEN=<token>
 
 После этого job сам загрузит `allure-results` через `allurectl`.
 
+Чтобы запуск в Allure TestOps закрывался сразу после завершения CI job (а не по таймауту авто-закрытия, например 1 час), добавьте переменную:
+
+```text
+ALLURE_LAUNCH_AUTO_CLOSE=true
+```
+
 ## Переменные из .env
 ```env
 TEST_BASE_URL=
