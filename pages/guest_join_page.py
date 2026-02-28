@@ -19,6 +19,11 @@ class GuestJoinPage:
         "button[e2e-id='auth-info__join-button']",
     ]
 
+    HAVE_ACCOUNT_LOCATORS = [
+        "[e2e-id='landing-page.already-have-account']",
+        "a[e2e-id='landing-page.already-have-account']",
+    ]
+
     def __init__(self, page):
         self.page = page
 
@@ -78,3 +83,6 @@ class GuestJoinPage:
             return True
         except AssertionError:
             return False
+
+    def click_already_have_account(self) -> None:
+        self._find_visible(self.HAVE_ACCOUNT_LOCATORS, timeout_ms=12_000).click()

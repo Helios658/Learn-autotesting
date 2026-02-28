@@ -90,3 +90,18 @@ class EventFlow:
             return guest_page.url
         finally:
             guest_context.close()
+
+    def join_via_guest_link_as_registered_user(self, guest_url: str, username: str, password: str):
+        guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
+        try:
+            guest_join_page = GuestJoinPage(guest_page)
+            guest_join_page.click_already_have_account()
+
+            auth_modal = GuestAuthModalPage(guest_page)
+            auth_modal.wait_opened().login(username=username, password=password)
+
+            guest_page.wait_for_load_state("domcontentloaded")
+            joined = guest_join_page.is_in_conference(timeout_ms=20_000)
+            return guest_page.url, joined
+        finally:
+            guest_context.close()
