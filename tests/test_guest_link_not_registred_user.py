@@ -40,8 +40,8 @@ def test_30392_guest_link_not_registred_user(driver):
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30392")
-def test_30392_quest_link_registred_user_no_authorization(driver):
+@pytest.mark.testcase("30393")
+def test_30393_quest_link_registred_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
