@@ -29,6 +29,8 @@ ALLURE_TOKEN=<token>
 ALLURE_LAUNCH_AUTO_CLOSE=true
 ```
 
+В CI дополнительно используется fallback-команда `allurectl launch close`, если авто-закрытие не отработало.
+
 Для уведомления в Telegram лучше использовать **Webhooks в Allure TestOps** (а не отправку из CI):
 
 1. В TestOps откройте: **Настройки проекта → Webhooks**.
@@ -44,11 +46,18 @@ https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
 ```json
 {
   "chat_id": "1834535141",
-  "text": "✅ Запуск \"{{launchName}}\" завершен\n📊 Total: {{total}} | Passed: {{passed}} | Failed: {{failed}} | Skipped: {{skipped}}\n🔗 {{launchUrl}}"
+  "text": "{{#if (eq launchStatus \"PASSED\")}}✅{{else}}❌{{/if}} Запуск \"{{launchName}}\" завершен\nСтатус: {{launchStatus}}\n📊 Total: {{total}} | Passed: {{passed}} | Failed: {{failed}} | Skipped: {{skipped}}\n🔗 {{launchUrl}}"
 }
 ```
 
-> Если часть плейсхолдеров не поддерживается вашей версией TestOps, оставьте только `{{launchName}}` и `{{launchUrl}}`, а доступные переменные выберите из списка в форме webhook.
+> Если `launchStatus/total/passed/...` или условный шаблон не поддерживаются вашей версией TestOps, используйте упрощенный вариант:
+
+```json
+{
+  "chat_id": "1834535141",
+  "text": "🚀 Запуск \"{{launchName}}\"\n🔗 {{launchUrl}}"
+}
+```
 
 ## Переменные из .env
 ```env
