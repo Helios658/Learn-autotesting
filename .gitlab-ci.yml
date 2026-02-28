@@ -52,28 +52,18 @@ full_e2e_tests:
         chmod +x /usr/local/bin/allurectl
 
         export ALLURE_RESULTS=allure-results
-        # Просим TestOps закрывать launch сразу после завершения job-run.
         export ALLURE_LAUNCH_AUTO_CLOSE=true
 
-        set -o pipefail
-        allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir=allure-results 2>&1 | tee allure_watch.log
-        TEST_EXIT=${PIPESTATUS[0]}
-
-        # Fallback: если Launch не закрылся автоматически, пробуем закрыть его явно.
-        # В разных версиях allurectl синтаксис отличается — пробуем несколько вариантов.
-        LAUNCH_ID=$(sed -n 's/.*Launch \[\([0-9]\+\)\].*/\1/p' allure_watch.log | tail -n1)
-        if [ -n "${LAUNCH_ID}" ]; then
-          echo "Detected Launch ID: ${LAUNCH_ID}"
-        fi
-
-        if [ -n "${LAUNCH_ID}" ]; then
-          allurectl launch close "${LAUNCH_ID}" || true
-        else
-          echo "Launch ID is empty, skip explicit close"
-        fi
+        set +e
+        allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+        TEST_EXIT=$?
+        set -e
       else
         echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> run pytest without TestOps upload"
-        pytest -v --headless --junitxml=report.xml --alluredir=allure-results || TEST_EXIT=$?
+        set +e
+        pytest -v --headless --junitxml=report.xml --alluredir=allure-results
+        TEST_EXIT=$?
+        set -e
       fi
 
       exit $TEST_EXIT
