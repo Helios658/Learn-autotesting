@@ -1,9 +1,6 @@
 import pytest
 from config import config
 from pages.login_page import LoginPage
-from pages.password_recovery_page import PasswordRecoveryPage
-from pages.mail_page import MailPage
-from pages.new_password_page import NewPasswordPage
 from services.password_service import PasswordService
 from services.password_recovery_flow import PasswordRecoveryFlow
 

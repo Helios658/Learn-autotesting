@@ -1,5 +1,4 @@
 import re
-import time
 from playwright.sync_api import Page
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
@@ -102,7 +101,6 @@ class EventFlow:
 
             guest_page.wait_for_load_state("domcontentloaded")
             joined = guest_join_page.is_in_conference(timeout_ms=20_000)
-            time.sleep(3)
             return guest_page.url, joined
         finally:
             guest_context.close()

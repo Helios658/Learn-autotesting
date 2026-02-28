@@ -1,3 +1,5 @@
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from config import config
 
 
@@ -76,12 +78,12 @@ class NewPasswordPage:
     def _debug_dump(self, suffix="new_password_debug"):
         try:
             self.page.screenshot(path=f"{suffix}.png", full_page=True)
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             pass
         try:
             with open(f"{suffix}.html", "w", encoding="utf-8") as file:
                 file.write(self.page.content())
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             pass
 
     def _find_visible_password_inputs_any_context(self, timeout_ms=None):
@@ -134,7 +136,7 @@ class NewPasswordPage:
                 self.CONFIRM_PASSWORD_INPUTS,
                 timeout_ms=config.EXPLICIT_WAIT * 1000,
             )
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             pass
 
         if not new_password_input or not confirm_password_input:
@@ -170,17 +172,17 @@ class NewPasswordPage:
             try:
                 confirm_password_input.press("Enter")
                 return
-            except Exception:
+            except (PlaywrightError, PlaywrightTimeoutError):
                 raise
         try:
             save_button.click(timeout=5000)
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             try:
                 save_button.click(force=True)
-            except Exception:
+            except (PlaywrightError, PlaywrightTimeoutError):
                 try:
                     save_button.press("Enter")
-                except Exception:
+                except (PlaywrightError, PlaywrightTimeoutError):
                     self.page.evaluate("el => el.click()", save_button.element_handle())
 
         self.page.wait_for_timeout(1000)
@@ -192,11 +194,11 @@ class NewPasswordPage:
                 try:
                     link.click(timeout=2000)
                     break
-                except Exception:
+                except (PlaywrightError, PlaywrightTimeoutError):
                     try:
                         link.click(force=True)
                         break
-                    except Exception:
+                    except (PlaywrightError, PlaywrightTimeoutError):
                         continue
 
         self.page.wait_for_url("**/login", timeout=config.EXPLICIT_WAIT * 1000)

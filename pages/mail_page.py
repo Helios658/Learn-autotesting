@@ -4,6 +4,16 @@ from html import unescape
 from urllib.parse import unquote
 from config import config
 
+class MailPageError(RuntimeError):
+    """Базовая ошибка для сценариев работы с почтой."""
+
+
+class RecoveryEmailNotReceivedError(MailPageError):
+    """Письмо для восстановления пароля не было получено вовремя."""
+
+
+class RecoveryLinkNotFoundError(MailPageError):
+    """Ссылка на восстановление пароля не найдена в письме."""
 
 class MailPage:
     def __init__(self, page):
@@ -99,7 +109,7 @@ class MailPage:
 
     def get_password_reset_link(self, wait_for_email=True):
         if wait_for_email and not self.wait_for_recovery_email():
-            raise Exception("Письмо с восстановлением не пришло")
+            raise RecoveryEmailNotReceivedError("Письмо с восстановлением не пришло")
 
         self.page.locator(self.EMAIL_SUBJECT).first.click()
         self.page.wait_for_timeout(1500)
@@ -112,4 +122,4 @@ class MailPage:
                 return reset_link
             self.page.wait_for_timeout(500)
 
-        raise Exception("Не нашли ссылку восстановления в письме")
+        raise RecoveryLinkNotFoundError("Не нашли ссылку восстановления в письме")

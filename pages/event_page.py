@@ -123,10 +123,10 @@ class EventPage(BasePage):
         )
 
     def click_copy_guest_link(self):
-        self.page.locator(self.GUEST_LINK_COPY_BUTTON).first.wait_for(
+        self.page.locator(self.CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY).first.wait_for(
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
-        self.safe_click(self.GUEST_LINK_COPY_BUTTON)
+        self.safe_click(self.CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY)
 
     def get_guest_link_url(self) -> str:
         for selector in self.GUEST_LINK_INPUT_LOCATORS:

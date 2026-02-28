@@ -1,9 +1,7 @@
-import time
 import pytest
 from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
-from pages.guest_auth_modal_page import GuestAuthModalPage
 
 
 @pytest.mark.smoke

@@ -3,6 +3,7 @@ import time
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from config import config
 from pages.base_page import BasePage
+from playwright.sync_api import Error as PlaywrightError
 
 class LoginPage(BasePage):
     def __init__(self, page):
@@ -55,11 +56,27 @@ class LoginPage(BasePage):
             self.page.on("response", self._track_response)
             self._response_listener_registered = True
 
+    def _is_auth_related_response(self, url: str) -> bool:
+        auth_markers = (
+            "/v2/login",
+            "/api/rest/login",
+            "/api/rest/auth",
+            "/oauth",
+            "/adfs",
+            "microsoftonline",
+        )
+        lower_url = (url or "").lower()
+        return any(marker in lower_url for marker in auth_markers)
+
     def _track_response(self, response):
         try:
-            self._response_statuses.append(response.status)
-        except Exception:
-            pass
+            response_url = response.url
+            response_status = response.status
+        except PlaywrightError:
+            return
+
+        if self._is_auth_related_response(response_url):
+            self._response_statuses.append((response_url, response_status))
 
     def _find_any_context(self, selectors, timeout=None):
         timeout = timeout or config.EXPLICIT_WAIT
@@ -144,20 +161,20 @@ class LoginPage(BasePage):
         try:
             locator.click(timeout=4000)
             return True
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
             pass
 
         try:
             locator.click(force=True, timeout=2000)
             return True
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
             pass
 
         # Важно: не используем element_handle() — он может зависать 30s на отвалившемся locator.
         try:
             locator.dispatch_event("click", timeout=1000)
             return True
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
             return False
 
     def click_show_all(self):
@@ -165,7 +182,7 @@ class LoginPage(BasePage):
             show_all = self._find_first_visible(self.SHOW_ALL_INPUT_LOCATORS, timeout=3000)
             self._click_with_fallback(show_all)
             return True
-        except Exception as exc:
+        except (PlaywrightTimeoutError, PlaywrightError) as exc:
             print(f"⚠️ Не удалось открыть список SSO-провайдеров: {exc}")
             return False
 
@@ -353,7 +370,7 @@ class LoginPage(BasePage):
         return self.get_network_error()
 
     def get_network_error(self):
-        for status in reversed(self._response_statuses[-100:]):
+        for _, status in reversed(self._response_statuses[-100:]):
             if 400 <= status < 600:
                 return status
         return 0

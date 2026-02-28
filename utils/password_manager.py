@@ -39,7 +39,7 @@ class PasswordManager:
         try:
             with open(self.password_file, 'r', encoding='utf-8') as f:
                 return f.read().strip()
-        except:
+        except OSError:
             return None
 
     def clear_password(self):
