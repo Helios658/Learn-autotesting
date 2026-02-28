@@ -73,7 +73,7 @@ class NewPasswordPage:
 
             self.page.wait_for_timeout(250)
 
-        raise TimeoutError(f"Не удалось найти элемент по селекторам: {selectors}")
+        raise PlaywrightTimeoutError(f"Не удалось найти элемент по селекторам: {selectors}")
 
     def _debug_dump(self, suffix="new_password_debug"):
         try:
@@ -144,7 +144,7 @@ class NewPasswordPage:
                 timeout_ms=config.EXPLICIT_WAIT * 1000,
             )
         if not new_password_input or not confirm_password_input:
-            raise TimeoutError("Не удалось найти два видимых password-поля на странице восстановления")
+            raise PlaywrightTimeoutError("Не удалось найти два видимых password-поля на странице восстановления")
 
         new_password_input.fill(new_password)
         confirm_password_input.fill(new_password)
