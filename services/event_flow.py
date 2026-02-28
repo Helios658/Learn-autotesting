@@ -47,21 +47,46 @@ class EventFlow:
         scroller = self.driver.locator(self.EVENT_LIST_SCROLLER).first
         scroller.wait_for(state="visible", timeout=15000)
 
-        cards = self.driver.locator(self.EVENT_CARDS)
-        count = cards.count()
+        max_scroll_steps = 120
+        no_progress_steps = 0
 
-        for idx in range(count):
-            card = cards.nth(idx)
-            card.scroll_into_view_if_needed()
-            try:
-                card.click(timeout=2000)
-            except Exception:
-                card.click(force=True)
+        for _ in range(max_scroll_steps):
+            cards = self.driver.locator(self.EVENT_CARDS)
+            visible_count = cards.count()
 
-            if target_event_id in self.driver.url:
-                return card
+            for idx in range(visible_count):
+                card = cards.nth(idx)
+                try:
+                    card.scroll_into_view_if_needed(timeout=2000)
+                except Exception:
+                    pass
 
-        raise AssertionError(f"Не нашли мероприятие {target_event_id}")
+                try:
+                    card.click(timeout=2000)
+                except Exception:
+                    card.click(force=True)
+
+                if target_event_id in (self.driver.url or ""):
+                    return card
+
+            prev_top = scroller.evaluate("el => el.scrollTop")
+            scroller.evaluate(
+                "el => el.scrollBy(0, Math.max(Math.floor(el.clientHeight * 0.85), 700))"
+            )
+            self.driver.wait_for_timeout(350)
+            new_top = scroller.evaluate("el => el.scrollTop")
+
+            if new_top <= prev_top + 1:
+                no_progress_steps += 1
+            else:
+                no_progress_steps = 0
+
+            if no_progress_steps >= 3:
+                break
+
+        raise AssertionError(
+            f"Не нашли мероприятие {target_event_id} после прокрутки списка конференций"
+        )
 
     def get_guest_link_for_event(self, target_event_id: str) -> str:
         if target_event_id not in (self.driver.url or ""):
