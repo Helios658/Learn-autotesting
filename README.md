@@ -1,3 +1,8 @@
+
+```
+
+## Запуск тестов
+```bash
 # Все тесты
 pytest -v
 
@@ -19,43 +24,25 @@ allure serve allure-results
 ALLURE_ENDPOINT=https://<your-company>.testops.cloud
 ALLURE_PROJECT_ID=<project_id>
 ALLURE_TOKEN=<token>
-```
-
-После этого job сам загрузит `allure-results` через `allurectl`.
-
-Чтобы запуск в Allure TestOps закрывался сразу после завершения CI job (а не по таймауту авто-закрытия, например 1 час), добавьте переменную:
-
-```text
 ALLURE_LAUNCH_AUTO_CLOSE=true
 ```
 
-В CI дополнительно используется fallback-команда `allurectl launch close`, если авто-закрытие не отработало.
+Для уведомления в Telegram используйте Webhook в Allure TestOps:
 
-Для уведомления в Telegram лучше использовать **Webhooks в Allure TestOps** (а не отправку из CI):
-
-1. В TestOps откройте: **Настройки проекта → Webhooks**.
-2. Создайте webhook на событие завершения/закрытия запуска (Launch finished/closed).
-3. Для Telegram-бота укажите URL:
+1. Откройте: **Настройки проекта → Webhooks**.
+2. Выберите событие завершения запуска.
+3. URL:
 
 ```text
 https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
 ```
 
-4. Пример JSON-тела (расширенный, с итогами запуска):
+4. Тело запроса (короткое и без неподдерживаемых шаблонов):
 
 ```json
 {
   "chat_id": "1834535141",
-  "text": "{{#if (eq launchStatus \"PASSED\")}}✅{{else}}❌{{/if}} Запуск \"{{launchName}}\" завершен\nСтатус: {{launchStatus}}\n📊 Total: {{total}} | Passed: {{passed}} | Failed: {{failed}} | Skipped: {{skipped}}\n🔗 {{launchUrl}}"
-}
-```
-
-> Если `launchStatus/total/passed/...` или условный шаблон не поддерживаются вашей версией TestOps, используйте упрощенный вариант:
-
-```json
-{
-  "chat_id": "1834535141",
-  "text": "🚀 Запуск \"{{launchName}}\"\n🔗 {{launchUrl}}"
+  "text": "✅ Запуск {{launchName}} завершен\n🔗 {{launchUrl}}"
 }
 ```
 
