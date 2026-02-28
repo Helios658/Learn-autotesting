@@ -1,9 +1,9 @@
 import re
 import time
-
 from playwright.sync_api import Page
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
+from pages.guest_auth_modal_page import GuestAuthModalPage
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -102,6 +102,7 @@ class EventFlow:
 
             guest_page.wait_for_load_state("domcontentloaded")
             joined = guest_join_page.is_in_conference(timeout_ms=20_000)
+            time.sleep(3)
             return guest_page.url, joined
         finally:
             guest_context.close()

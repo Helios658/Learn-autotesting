@@ -1,10 +1,27 @@
-import time
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-class GuestAuthModalPage():
-    USERNAME_INPUT_LOCATORS = "[e2e-id='login-page.login-form.login-input']"
-    PASSWORD_INPUT_LOCATORS = "[e2e-id='login-page.login-form.password-input']"
-    LOGIN_BUTTON_LOCATORS = "[e2e-id='login-form__login-button']"
+import time
+from playwright.sync_api import Error as PlaywrightError
+
+
+class GuestAuthModalPage:
+    USERNAME_INPUT_LOCATORS = [
+        "[e2e-id='login-page.login-form.login-input']",
+        "input[e2e-id='login-page.login-form.login-input']",
+        "input[type='email']",
+        "input[name='username']",
+        "input[name='login']",
+    ]
+    PASSWORD_INPUT_LOCATORS = [
+        "[e2e-id='login-page.login-form.password-input']",
+        "input[e2e-id='login-page.login-form.password-input']",
+        "input[type='password']",
+        "input[name='password']",
+    ]
+    LOGIN_BUTTON_LOCATORS = [
+        "[e2e-id='login-form__login-button']",
+        "button[e2e-id='login-form__login-button']",
+        "button[type='submit']",
+    ]
 
     def __init__(self, page):
         self.page = page

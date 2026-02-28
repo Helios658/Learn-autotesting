@@ -1,8 +1,9 @@
+import time
 import pytest
-
 from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
+from pages.guest_auth_modal_page import GuestAuthModalPage
 
 
 @pytest.mark.smoke
@@ -55,8 +56,8 @@ def test_30392_quest_link_registred_user_no_authorization(driver):
         password=config.USER_PASSWORD,
     )
 
-    assert is_joined, f"Пользователь не вошел в конференцию. Текущий URL: {final_url}"
+    assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
 
     is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
     is_join_url = "/v2/join?token=" in final_url
-    assert is_conference_url or is_join_url, f"Неожиданный URL после входа: {final_url}"
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"

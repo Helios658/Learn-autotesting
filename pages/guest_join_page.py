@@ -18,10 +18,17 @@ class GuestJoinPage:
         "[e2e-id='auth-info__join-button']",
         "button[e2e-id='auth-info__join-button']",
     ]
-
     HAVE_ACCOUNT_LOCATORS = [
         "[e2e-id='landing-page.already-have-account']",
         "a[e2e-id='landing-page.already-have-account']",
+        "xpath=//a[contains(@e2e-id, 'already-have-account')]",
+        "xpath=//*[self::a or self::button][contains(normalize-space(.), 'У меня есть аккаунт') or contains(normalize-space(.), 'Уже есть аккаунт') or contains(normalize-space(.), 'I have an account')]",
+    ]
+
+    AUTH_MODAL_USERNAME_LOCATORS = [
+        "[e2e-id='login-page.login-form.login-input']",
+        "input[e2e-id='login-page.login-form.login-input']",
+        "input[type='email']",
     ]
 
     def __init__(self, page):
@@ -84,5 +91,12 @@ class GuestJoinPage:
         except AssertionError:
             return False
 
-    def click_already_have_account(self) -> None:
-        self._find_visible(self.HAVE_ACCOUNT_LOCATORS, timeout_ms=12_000).click()
+    def click_already_have_account(self) -> bool:
+        try:
+            self._find_visible(self.AUTH_MODAL_USERNAME_LOCATORS, timeout_ms=2000)
+            return False
+        except AssertionError:
+            pass
+
+        self._find_visible(self.HAVE_ACCOUNT_LOCATORS, timeout_ms=15_000).click()
+        return True
