@@ -3,6 +3,7 @@ from playwright.sync_api import Page
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
+from pages.login_page import LoginPage
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -127,5 +128,32 @@ class EventFlow:
             guest_page.wait_for_load_state("domcontentloaded")
             joined = guest_join_page.is_in_conference(timeout_ms=20_000)
             return guest_page.url, joined
+        finally:
+            guest_context.close()
+
+    def join_via_guest_link_as_adfs_user(self, guest_url: str, username: str, password: str):
+        """Вход по гостевой ссылке с авторизацией через ADFS."""
+        guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
+        try:
+            guest_join_page = GuestJoinPage(guest_page)
+            guest_join_page.click_already_have_account()
+
+            login_page = LoginPage(guest_page)
+            login_page.click_show_all()
+            login_page.adfs_link_open()
+            login_page.enter_username_adfs(username)
+            login_page.enter_password_adfs(password)
+            login_page.click_login_button_adfs()
+
+            active_page = login_page.page
+            active_page.wait_for_load_state("domcontentloaded")
+
+
+            active_guest_join_page = GuestJoinPage(active_page)
+            active_guest_join_page.click_join()
+            active_page.wait_for_load_state("domcontentloaded")
+
+            joined = active_guest_join_page.is_in_conference(timeout_ms=20_000)
+            return active_page.url, joined
         finally:
             guest_context.close()
