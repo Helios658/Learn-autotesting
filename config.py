@@ -74,6 +74,10 @@ class Config:
     TEST_ADFS_USER_EMAIL = os.getenv('TEST_ADFS_USER_EMAIL')
     TEST_ADFS_USER_PASSWORD = os.getenv('TEST_ADFS_USER_PASSWORD')
 
+    #USER2
+    TEST_USER2_EMAIL = os.getenv('TEST_USER2_EMAIL')
+    TEST_USER2_PASSWORD = os.getenv('TEST_USER2_PASSWORD')
+
     # ========== Настройки запуска ==========
     HEADLESS_MODE = os.getenv('HEADLESS_MODE', 'False').lower() == 'true'
     BROWSER = os.getenv('BROWSER', 'chrome')

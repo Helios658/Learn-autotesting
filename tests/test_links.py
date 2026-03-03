@@ -36,10 +36,12 @@ def test_30392_guest_link_not_registred_user(driver):
     if is_joined is not None:
         assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
 
+
+
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30393")
-def test_30393_quest_link_registred_user_no_authorization(driver):
+@pytest.mark.testcase("30794")
+def test_30794_quest_link_registred_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -86,8 +88,8 @@ def test_31121_quest_link_ldap_user_no_authorization(driver):
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("31122")
-def test_31122_quest_link_adfs_user_no_authorization(driver):
+@pytest.mark.testcase("30855")
+def test_30855_quest_link_adfs_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -100,6 +102,30 @@ def test_31122_quest_link_adfs_user_no_authorization(driver):
         guest_url=guest_url,
         username=config.TEST_ADFS_USER_EMAIL,
         password=config.TEST_ADFS_USER_PASSWORD,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30392")
+def test_30392_quest_link_registred_user_no_authorization(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    guest_url = flow.get_guest_link_for_event(event_id)
+
+    assert "join:" in guest_url, f"Некорректная гостевая ссылка: {guest_url}"
+
+    final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_quest_link(
+        guest_url=guest_url,
+        username=config.TEST_USER2_EMAIL,
+        password=config.TEST_USER2_PASSWORD,
     )
 
     assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
