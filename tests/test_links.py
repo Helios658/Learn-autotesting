@@ -7,7 +7,7 @@ from services.login_flow import LoginFlow
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30392")
-def test_30392_guest_link_not_registred_user(driver):
+def test_30392_guest_link_not_registered_user(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -41,7 +41,7 @@ def test_30392_guest_link_not_registred_user(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30794")
-def test_30794_quest_link_registred_user_no_authorization(driver):
+def test_30794_quest_link_registered_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -52,8 +52,8 @@ def test_30794_quest_link_registred_user_no_authorization(driver):
 
     final_url, is_joined = flow.join_via_guest_link_as_registered_user(
         guest_url=guest_url,
-        username=config.USER_EMAIL,
-        password=config.USER_PASSWORD,
+        username=config.TEST_USER2_EMAIL,
+        password=config.TEST_USER2_PASSWORD,
     )
 
     assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
@@ -113,7 +113,7 @@ def test_30855_quest_link_adfs_user_no_authorization(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30392")
-def test_30392_quest_link_registred_user_no_authorization(driver):
+def test_30392_quest_link_registered_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -124,6 +124,60 @@ def test_30392_quest_link_registred_user_no_authorization(driver):
 
     final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_quest_link(
         guest_url=guest_url,
+        username=config.TEST_USER2_EMAIL,
+        password=config.TEST_USER2_PASSWORD,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("30435")
+def test_30435_speaker_link_not_registered_user(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    speaker_url = flow.get_speaker_link_for_event(event_id)
+
+    assert "join:" in speaker_url, f"Некорректная ссылка докладчика: {speaker_url}"
+
+    join_result = flow.join_guest_via_link(speaker_url, guest_name="Auto Guest")
+
+    is_joined = None
+    if isinstance(join_result, tuple):
+        final_url, is_joined = join_result
+    else:
+        final_url = join_result
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+
+    assert is_conference_url or is_join_url, (
+        f"После входа по ссылке докладчика получен неожиданный URL: {final_url}"
+    )
+
+    if is_joined is not None:
+        assert is_joined, f"UI не подтвердил вход в конференцию по ссылке докладчика, URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("31412")
+def test_31412_speaker_link_not_speaker_user(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    speaker_url = flow.get_speaker_link_for_event(event_id)
+
+    assert "join:" in speaker_url, f"Некорректная ссылка докладчика: {speaker_url}"
+
+    final_url, is_joined = flow.join_via_guest_link_as_registered_user(
+        guest_url=speaker_url,
         username=config.TEST_USER2_EMAIL,
         password=config.TEST_USER2_PASSWORD,
     )

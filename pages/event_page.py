@@ -24,6 +24,11 @@ class EventPage(BasePage):
         "xpath=//button[@e2e-id='conference-tab__settings' or @e2e-id='conference-tab__setting']",
     ]
     CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY = "[e2e-id='conference-session--settings--guest-link--copy-btn']"
+    CONFERENCE_SESSION_LINK_LIST = [
+        "a.layout.layout-top-margin_8.pseudo-link",
+        'a.pseudo-link:has-text("расширенные настройки ссылок")',
+    ]
+    CONFERENCE_SESSION_SPEAKER_LINK_COPY = "[e2e-id='share-link-copy-speaker-link-btn']"
     GUEST_LINK_INPUT_LOCATORS = [
         "input[e2e-id*='guest-link']",
         "input[value*='#join:']",
@@ -121,6 +126,16 @@ class EventPage(BasePage):
         raise AssertionError(
             "Не удалось открыть вкладку настроек мероприятия: кнопка settings не появилась после reveal controls"
         )
+
+    def open_link_list(self):
+        link_list = self._find_first_visible(self.CONFERENCE_SESSION_LINK_LIST, timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(link_list)
+
+    def click_copy_speaker_link(self):
+        self.page.locator(self.CONFERENCE_SESSION_SPEAKER_LINK_COPY).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.CONFERENCE_SESSION_SPEAKER_LINK_COPY)
 
     def click_copy_guest_link(self):
         self.page.locator(self.CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY).first.wait_for(

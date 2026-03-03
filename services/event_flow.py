@@ -98,6 +98,32 @@ class EventFlow:
         self.event_page.open_event_settings()
         return self.event_page.get_guest_link_url()
 
+    def _read_link_from_clipboard(self) -> str:
+        self.driver.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        link = self.driver.evaluate("""
+            async () => {
+                try {
+                    return (await navigator.clipboard.readText()) || "";
+                } catch (e) {
+                    return "";
+                }
+            }
+        """)
+        return (link or "").strip()
+
+    def get_speaker_link_for_event(self, target_event_id: str) -> str:
+        if target_event_id not in (self.driver.url or ""):
+            self.open_event_from_list(target_event_id)
+
+        self.event_page.open_event_settings()
+        self.event_page.open_link_list()
+        self.event_page.click_copy_speaker_link()
+
+        speaker_url = self._read_link_from_clipboard()
+        if "join:" not in speaker_url:
+            raise AssertionError(f"Не удалось получить ссылку докладчика из буфера: {speaker_url}")
+        return speaker_url
+
     def open_guest_link_in_incognito(self, guest_url: str):
         browser = self.driver.context.browser
         if browser is None:
