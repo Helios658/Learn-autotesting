@@ -33,20 +33,20 @@ def save_artifacts(page, test_name: str, out_dir: str = "artifacts") -> dict:
     # screenshot
     try:
         page.screenshot(path=str(png_path), full_page=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # html
     try:
         html_path.write_text(page.content(), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # url/meta
     try:
         meta_path.write_text(f"URL: {page.url}\n", encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # ✅ attach в Allure (если установлен)
     try:
@@ -73,9 +73,8 @@ def save_artifacts(page, test_name: str, out_dir: str = "artifacts") -> dict:
                 attachment_type=allure.attachment_type.TEXT,
             )
 
-    except Exception:
-        # если allure не установлен — просто игнорируем
-        pass
+    except Exception as exc:
+        print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     return {
         "screenshot": str(png_path),

@@ -100,8 +100,8 @@ def driver(request, playwright_instance: Playwright):
 
         try:
             context.tracing.stop(path=str(trace_path))
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"⚠️ Не удалось сохранить trace: {exc}")
 
         # ✅ опционально: attach trace в Allure, если установлен
         try:
@@ -113,14 +113,14 @@ def driver(request, playwright_instance: Playwright):
                     name="trace.zip",
                     attachment_type=allure.attachment_type.ZIP,
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"⚠️ Не удалось сохранить trace: {exc}")
     else:
         # success: остановить без сохранения
         try:
             context.tracing.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"⚠️ Не удалось сохранить trace: {exc}")
 
     context.close()
     browser.close()

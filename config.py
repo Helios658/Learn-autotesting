@@ -19,7 +19,6 @@ def get_dynamic_password():
         return env_password
 
     if password_file.exists():
-        """Получает последний сгенерированный пароль из файла через PasswordManager."""
         manager = PasswordManager()
         password = manager.get_password()
 
@@ -31,7 +30,6 @@ def get_dynamic_password():
             print(f"⚠️ Файл {manager.password_file.name} пустой")
 
     # Если файла нет или он пустой - используем значение из .env или дефолт
-    env_password = os.getenv('TEST_USER_PASSWORD', '')
     if env_password:
         print("📝 Используем пароль из .env файла")
         return env_password

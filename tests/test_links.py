@@ -65,7 +65,7 @@ def test_30794_quest_link_registered_user_no_authorization(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("31121")
-def test_31121_quest_link_ldap_user_no_authorization(driver):
+def test_31121_guest_link_ldap_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -89,7 +89,7 @@ def test_31121_quest_link_ldap_user_no_authorization(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("30855")
-def test_30855_quest_link_adfs_user_no_authorization(driver):
+def test_30855_guest_link_adfs_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -112,8 +112,8 @@ def test_30855_quest_link_adfs_user_no_authorization(driver):
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30392")
-def test_30392_quest_link_registered_user_no_authorization(driver):
+@pytest.mark.testcase("30393")
+def test_30393_guest_link_registered_user_no_authorization(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -122,7 +122,7 @@ def test_30392_quest_link_registered_user_no_authorization(driver):
 
     assert "join:" in guest_url, f"Некорректная гостевая ссылка: {guest_url}"
 
-    final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_quest_link(
+    final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_guest_link(
         guest_url=guest_url,
         username=config.TEST_USER2_EMAIL,
         password=config.TEST_USER2_PASSWORD,

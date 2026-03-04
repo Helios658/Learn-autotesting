@@ -1,6 +1,7 @@
 import pytest
 from config import config
 from services.login_flow import LoginFlow
+from pages.login_page import LoginPage
 
 
 @pytest.mark.smoke
@@ -15,8 +16,10 @@ def test_30381_registered_user_can_login(driver):
 @pytest.mark.testcase("31407")
 def test_31407_invalid_password(driver):
     error_code = LoginFlow(driver).login(config.ADMIN_EMAIL, "wrong_password_123", expect_success=False)
-    # У тебя уже есть UI/response проверка в LoginPage.check_400_error() — оставляем её в отдельном тесте или добавим в flow позже
-    assert error_code in (0, 400), f"Ожидали 400 или UI-ошибку, получили: {error_code}"
+    has_login_error = LoginPage(driver).check_400_error(timeout=config.EXPLICIT_WAIT)
+    assert error_code == 400 or has_login_error, (
+        f"Ожидали HTTP 400 или явную UI-ошибку авторизации, получили: error_code={error_code}, url={driver.url}"
+    )
 
 
 @pytest.mark.smoke

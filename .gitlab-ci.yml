@@ -40,8 +40,6 @@ full_e2e_tests:
         "reportName": "UI E2E"
       }
       EOF
-    - export TEST_USER_PASSWORD="${TEST_USER_PASSWORD}"
-    - echo "${TEST_USER_PASSWORD}" > last_generated_password.txt
   script:
     - |
       TEST_EXIT=0
@@ -82,5 +80,4 @@ full_e2e_tests:
     paths:
       - report.xml
       - allure-results/
-      - last_generated_password.txt
       - artifacts/

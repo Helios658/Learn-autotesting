@@ -5,7 +5,6 @@ from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
 from pages.login_page import LoginPage
 from config import config
-from utils.password_manager import PasswordManager
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -186,7 +185,7 @@ class EventFlow:
         finally:
             guest_context.close()
 
-    def join_via_guest_link_as_registered_user_login_before_open_quest_link(self, guest_url: str, username: str, password: str):
+    def join_via_guest_link_as_registered_user_login_before_open_guest_link(self, guest_url: str, username: str, password: str):
         guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
         try:
             login_page = LoginPage(guest_page)
@@ -207,3 +206,10 @@ class EventFlow:
             return guest_page.url, joined
         finally:
             guest_context.close()
+
+    def join_via_guest_link_as_registered_user_login_before_open_quest_link(self, guest_url: str, username: str, password: str):
+        return self.join_via_guest_link_as_registered_user_login_before_open_guest_link(
+            guest_url=guest_url,
+            username=username,
+            password=password,
+        )

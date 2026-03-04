@@ -13,8 +13,8 @@ def test_31411_password_recovery(driver):
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("31411")
-def test_31411_password_recovery_profile(driver):
+@pytest.mark.testcase("31413")
+def test_31413_password_recovery_profile(driver):
     password_service = PasswordService()
     current_password = password_service.get_current_password(config.USER_PASSWORD)
     if not current_password:

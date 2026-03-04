@@ -1,6 +1,3 @@
-
-```
-
 ## Запуск тестов
 ```bash
 # Все тесты
@@ -41,7 +38,7 @@ https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
 
 ```json
 {
-  "chat_id": "1834535141",
+  "chat_id": "<TELEGRAM_CHAT_ID>",
   "text": "✅ Запуск {{launchName}} завершен\n🔗 {{launchUrl}}"
 }
 ```
@@ -59,6 +56,8 @@ TEST_LDAP_USER_EMAIL=
 TEST_LDAP_USER_PASSWORD=
 TEST_ADFS_USER_EMAIL=
 TEST_ADFS_USER_PASSWORD=
+TEST_USER2_EMAIL=
+TEST_USER2_PASSWORD=
 ```
 
 ## Безопасное добавление файлов в git

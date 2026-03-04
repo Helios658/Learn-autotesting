@@ -29,5 +29,5 @@ class LoginFlow:
                 f"Логин неуспешен: URL={self.driver.url}, network_error={error_code}"
             )
 
-        self.driver.wait_for_timeout(2000)
+        self.login_page.check_400_error(timeout=timeout)
         return self.login_page.get_network_error()
