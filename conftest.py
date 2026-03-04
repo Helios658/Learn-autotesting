@@ -14,6 +14,22 @@ load_dotenv()
 def pytest_addoption(parser):
     parser.addoption("--headless", action="store_true", help="Run tests in headless mode")
 
+def _resolve_browser_launcher(playwright_instance: Playwright):
+    browser_name = (config.BROWSER or "chromium").strip().lower()
+    aliases = {
+        "chrome": "chromium",
+        "chromium": "chromium",
+        "firefox": "firefox",
+        "webkit": "webkit",
+        "safari": "webkit",
+    }
+
+    resolved = aliases.get(browser_name)
+    if not resolved:
+        print(f"⚠️ Неизвестный BROWSER='{config.BROWSER}', используем chromium")
+        resolved = "chromium"
+
+    return resolved, getattr(playwright_instance, resolved)
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
@@ -61,15 +77,17 @@ def playwright_instance() -> Playwright:
     with sync_playwright() as p:
         yield p
 
-
 @pytest.fixture
 def driver(request, playwright_instance: Playwright):
     use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
 
-    browser = playwright_instance.chromium.launch(
-        headless=use_headless,
-        args=["--ignore-certificate-errors", "--allow-insecure-localhost"],
-    )
+    resolved_browser, browser_launcher = _resolve_browser_launcher(playwright_instance)
+
+    launch_kwargs = {"headless": use_headless}
+    if resolved_browser == "chromium":
+        launch_kwargs["args"] = ["--ignore-certificate-errors", "--allow-insecure-localhost"]
+
+    browser = browser_launcher.launch(**launch_kwargs)
     context = browser.new_context(
         viewport={"width": 1920, "height": 1080},
         ignore_https_errors=True,
@@ -81,9 +99,9 @@ def driver(request, playwright_instance: Playwright):
     page = context.new_page()
 
     if use_headless:
-        print("🚀 Запуск Playwright в headless-режиме")
+        print(f"🚀 Запуск Playwright ({resolved_browser}) в headless-режиме")
     else:
-        print("🚀 Запуск Playwright в обычном режиме")
+        print(f"🚀 Запуск Playwright ({resolved_browser}) в обычном режиме")
 
     yield page
 

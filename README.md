@@ -46,6 +46,8 @@ https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
 ## Переменные из .env
 ```env
 TEST_BASE_URL=
+HEADLESS_MODE=true
+BROWSER=chromium  # chromium | firefox | webkit
 TEST_USER_EMAIL=
 TEST_USER_PASSWORD=
 MAIL_USERNAME=

@@ -1,4 +1,5 @@
 import re
+from time import (sleep)
 from playwright.sync_api import Page
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
@@ -204,7 +205,6 @@ class EventFlow:
                 raise AssertionError(f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}")
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
-
             guest_join_page = GuestJoinPage(guest_page)
             guest_join_page.click_join()
 
