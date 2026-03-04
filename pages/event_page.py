@@ -29,6 +29,16 @@ class EventPage(BasePage):
         'a.pseudo-link:has-text("расширенные настройки ссылок")',
     ]
     CONFERENCE_SESSION_SPEAKER_LINK_COPY = "[e2e-id='share-link-copy-speaker-link-btn']"
+    SPEAKER_LINK_INPUT_LOCATORS = [
+        "input[e2e-id*='speaker']",
+        "input[value*='#join:']",
+        "input[value*='join:']",
+        "input[readonly]",
+    ]
+    SPEAKER_LINK_ANCHOR_LOCATORS = [
+        "a[href*='#join:']",
+        "a[href*='join:']",
+    ]
     GUEST_LINK_INPUT_LOCATORS = [
         "input[e2e-id*='guest-link']",
         "input[value*='#join:']",
@@ -142,6 +152,31 @@ class EventPage(BasePage):
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
         self.safe_click(self.CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY)
+
+    def get_speaker_link_url(self) -> str:
+        for selector in self.SPEAKER_LINK_INPUT_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            value = (locator.input_value() or "").strip()
+            if "join:" in value:
+                return value
+
+        for selector in self.SPEAKER_LINK_ANCHOR_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            href = (locator.get_attribute("href") or "").strip()
+            if "join:" in href:
+                return href
+
+        full_text = (self.page.content() or "")
+        import re
+        match = re.search(r'https?://[^\s"\'<>]+#?join:[^\s"\'<>]+', full_text)
+        if match:
+            return match.group(0)
+
+        raise AssertionError("Не удалось получить speaker-link из настроек мероприятия")
 
     def get_guest_link_url(self) -> str:
         for selector in self.GUEST_LINK_INPUT_LOCATORS:

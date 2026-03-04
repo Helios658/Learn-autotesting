@@ -119,9 +119,16 @@ class EventFlow:
         self.event_page.click_copy_speaker_link()
 
         speaker_url = self._read_link_from_clipboard()
-        if "join:" not in speaker_url:
-            raise AssertionError(f"Не удалось получить ссылку докладчика из буфера: {speaker_url}")
-        return speaker_url
+        if "join:" in speaker_url:
+            return speaker_url
+
+        fallback_url = self.event_page.get_speaker_link_url()
+        if "join:" in fallback_url:
+            return fallback_url
+
+        raise AssertionError(
+            f"Не удалось получить ссылку докладчика ни из буфера, ни из DOM. clipboard={speaker_url}, dom={fallback_url}"
+        )
 
     def open_guest_link_in_incognito(self, guest_url: str):
         browser = self.driver.context.browser
