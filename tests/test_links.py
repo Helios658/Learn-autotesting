@@ -292,3 +292,51 @@ def test_20_moderator_link_registered_user_with_authorization(driver):
     is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
     is_join_url = "/v2/join?token=" in final_url
     assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("21")
+def test_21_guest_link_registered_ldap_with_authorization(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    guest_url = flow.get_guest_link_for_event(event_id)
+
+    assert "join:" in guest_url, f"Некорректная гостевая ссылка: {guest_url}"
+
+    final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_guest_link(
+        guest_url=guest_url,
+        username=config.TEST_LDAP_USER_EMAIL,
+        password=config.TEST_LDAP_USER_PASSWORD,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("22")
+def test_22_guest_link_registered_adfs_with_authorization(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    guest_url = flow.get_guest_link_for_event(event_id)
+
+    assert "join:" in guest_url, f"Некорректная гостевая ссылка: {guest_url}"
+
+    final_url, is_joined = flow.join_via_guest_link_as_adfs_user(
+        guest_url=guest_url,
+        username=config.TEST_ADFS_USER_EMAIL,
+        password=config.TEST_ADFS_USER_PASSWORD,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в конференцию, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
