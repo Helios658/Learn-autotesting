@@ -6,8 +6,8 @@ from services.event_flow import EventFlow
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30887")
-def test_30887_events_one_time_login_only(driver):
+@pytest.mark.testcase("1")
+def test_1_events_one_time_login_only(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)

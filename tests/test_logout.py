@@ -6,15 +6,15 @@ from services.logout_flow import LogoutFlow
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30545")
-def test_30545_logout_menu(driver):
+@pytest.mark.testcase("14")
+def test_14_logout_menu(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
     assert LogoutFlow(driver).logout_via_menu()
 
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
-@pytest.mark.testcase("30255")
-def test_30255_logout_profile(driver):
+@pytest.mark.testcase("15")
+def test_15_logout_profile(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
     assert LogoutFlow(driver).logout_via_profile()

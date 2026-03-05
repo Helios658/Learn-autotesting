@@ -1,4 +1,6 @@
 import re
+import time
+
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pages.event_page import EventPage
@@ -129,6 +131,26 @@ class EventFlow:
 
         raise AssertionError(
             f"Не удалось получить ссылку докладчика ни из буфера, ни из DOM. clipboard={speaker_url}, dom={fallback_url}"
+        )
+
+    def get_moderator_link_for_event(self, target_event_id: str) -> str:
+        if target_event_id not in (self.driver.url or ""):
+            self.open_event_from_list(target_event_id)
+
+        self.event_page.open_event_settings()
+        self.event_page.open_link_list()
+        self.event_page.click_copy_moderator_link()
+
+        moderator_url = self._read_link_from_clipboard()
+        if "join:" in moderator_url:
+            return moderator_url
+
+        fallback_url = self.event_page.get_moderator_link_url()
+        if "join:" in fallback_url:
+            return fallback_url
+
+        raise AssertionError(
+            f"Не удалось получить ссылку докладчика ни из буфера, ни из DOM. clipboard={moderator_url}, dom={fallback_url}"
         )
 
     def open_guest_link_in_incognito(self, guest_url: str):

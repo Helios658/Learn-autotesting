@@ -39,6 +39,17 @@ class EventPage(BasePage):
         "a[href*='#join:']",
         "a[href*='join:']",
     ]
+    CONFERENCE_SESSION_MODERATOR_LINK_COPY = "[e2e-id='share-link-copy-moderator-link-btn']"
+    MODERATOR_LINK_INPUT_LOCATORS = [
+        "input[e2e-id*='moderator']",
+        "input[value*='#join:']",
+        "input[value*='join:']",
+        "input[readonly]",
+    ]
+    MODERATOR_LINK_ANCHOR_LOCATORS = [
+        "a[href*='#join:']",
+        "a[href*='join:']",
+    ]
     GUEST_LINK_INPUT_LOCATORS = [
         "input[e2e-id*='guest-link']",
         "input[value*='#join:']",
@@ -147,6 +158,12 @@ class EventPage(BasePage):
         )
         self.safe_click(self.CONFERENCE_SESSION_SPEAKER_LINK_COPY)
 
+    def click_copy_moderator_link(self):
+        self.page.locator(self.CONFERENCE_SESSION_MODERATOR_LINK_COPY).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.CONFERENCE_SESSION_MODERATOR_LINK_COPY)
+
     def click_copy_guest_link(self):
         self.page.locator(self.CONFERENCE_SESSION_SETTINGS_GUEST_LINK_COPY).first.wait_for(
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
@@ -177,6 +194,31 @@ class EventPage(BasePage):
             return match.group(0)
 
         raise AssertionError("Не удалось получить speaker-link из настроек мероприятия")
+
+    def get_moderator_link_url(self) -> str:
+        for selector in self.MODERATOR_LINK_INPUT_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            value = (locator.input_value() or "").strip()
+            if "join:" in value:
+                return value
+
+        for selector in self.MODERATOR_LINK_ANCHOR_LOCATORS:
+            locator = self.page.locator(selector).first
+            if locator.count() == 0:
+                continue
+            href = (locator.get_attribute("href") or "").strip()
+            if "join:" in href:
+                return href
+
+        full_text = (self.page.content() or "")
+        import re
+        match = re.search(r'https?://[^\s"\'<>]+#?join:[^\s"\'<>]+', full_text)
+        if match:
+            return match.group(0)
+
+        raise AssertionError("Не удалось получить moderator-link из настроек мероприятия")
 
     def get_guest_link_url(self) -> str:
         for selector in self.GUEST_LINK_INPUT_LOCATORS:
