@@ -1,6 +1,6 @@
 import re
-from time import (sleep)
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
@@ -197,14 +197,21 @@ class EventFlow:
         guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
         try:
             login_page = LoginPage(guest_page)
-            login_page.open()
-            login_page.enter_username(username)
-            login_page.enter_password(password)
-            login_page.click_login_button()
+
+            try:
+                login_page.open()
+                login_page.enter_username(username)
+                login_page.enter_password(password)
+                login_page.click_login_button()
+            except PlaywrightTimeoutError:
+                guest_page.goto(config.LOGIN_URL, wait_until="domcontentloaded")
+                GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+
             if not login_page.wait_for_successful_login(timeout=20):
                 raise AssertionError(f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}")
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
+
             guest_join_page = GuestJoinPage(guest_page)
             guest_join_page.click_join()
 
