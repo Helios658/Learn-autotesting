@@ -60,6 +60,9 @@ class EventPage(BasePage):
         "a[href*='#join:']",
         "a[href*='join:']",
     ]
+    PARTICIPANTS_LIST_LOCATOR = "[e2e-id='toggle-participants-list-btn']"
+    PARTICIPANTS_PLUS_BOTTOM_LOCATOR = "[e2e-id='participants-list-additional-actions-btn']"
+    ADD_PARTICIPANTS_LOCATOR = "div.option_main-content:has(span.action-title:has-text('Добавить участников'))"
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
@@ -238,3 +241,22 @@ class EventPage(BasePage):
                 return href
 
         raise AssertionError("Не удалось получить guest-link из настроек мероприятия")
+
+    def open_participants_list(self):
+        self.page.locator(self.PARTICIPANTS_LIST_LOCATOR).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.PARTICIPANTS_LIST_LOCATOR)
+
+    def plus_bottom_participants_list(self):
+        self.page.locator(self.PARTICIPANTS_PLUS_BOTTOM_LOCATOR).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.PARTICIPANTS_PLUS_BOTTOM_LOCATOR)
+
+    def add_participants_bottom(self):
+        self.page.locator(self.ADD_PARTICIPANTS_LOCATOR).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.ADD_PARTICIPANTS_LOCATOR)
+

@@ -1,6 +1,5 @@
 import re
 import time
-
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pages.event_page import EventPage
@@ -249,3 +248,5 @@ class EventFlow:
             username=username,
             password=password,
         )
+
+    def add_participants_in_event(self):

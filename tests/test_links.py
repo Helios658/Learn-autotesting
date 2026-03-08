@@ -1,5 +1,4 @@
 import time
-
 import pytest
 from config import config
 from services.event_flow import EventFlow
@@ -340,3 +339,20 @@ def test_22_guest_link_registered_adfs_with_authorization(driver):
     is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
     is_join_url = "/v2/join?token=" in final_url
     assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("23")
+def test_23_link_for_the_invited(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    #Так мы создаем эвент завтра надо:
+    #1)Открыть список участников
+    #2)Добавить открытие списка в event_page
+    #3)Добавить приглашение пользователя в мероприятие в event_flow
+    #4)Открыть почту
+    #5)Перейти по ссылке
+    #6)У меня есть аккаунт
+    #7)Ввести логин и пароль
