@@ -249,4 +249,10 @@ class EventFlow:
             password=password,
         )
 
-    def add_participants_in_event(self):
+    def add_participant_in_event(self, participant_email: str):
+        self.event_page.open_participants_list()
+        self.event_page.plus_bottom_participants_list()
+        self.event_page.add_participants_bottom()
+        self.event_page.fill_invited_participant_email(participant_email)
+        self.event_page.select_invited_participant_checkbox(participant_email)
+        self.event_page.submit_invite_participant()

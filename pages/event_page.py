@@ -60,9 +60,37 @@ class EventPage(BasePage):
         "a[href*='#join:']",
         "a[href*='join:']",
     ]
+
     PARTICIPANTS_LIST_LOCATOR = "[e2e-id='toggle-participants-list-btn']"
     PARTICIPANTS_PLUS_BOTTOM_LOCATOR = "[e2e-id='participants-list-additional-actions-btn']"
-    ADD_PARTICIPANTS_LOCATOR = "div.option_main-content:has(span.action-title:has-text('Добавить участников'))"
+    ADD_PARTICIPANTS_LOCATORS = [
+        "div.option__main-content:has-text('Добавить участников')",
+        "div.option:has(span.action-title:has-text('Добавить участников'))",
+        "span.action-title:has-text('Добавить участников')",
+    ]
+    INVITE_EMAIL_INPUT_LOCATORS = [
+        "input.search-input.iva-input",
+        "input[type='email']",
+        "input[placeholder*='email' i]",
+        "input[placeholder*='почт' i]",
+    ]
+
+    RESULT_ROW_LOCATORS = [
+        "shared-invite-interlocutors-list shared-interlocutors-item",
+        "shared-interlocutors-item",
+    ]
+
+    PARTICIPANT_ROW_CHECKBOX_LOCATORS = [
+        "iva-checkbox div.iva-checkbox_frame",
+        "div.iva-checkbox_frame",
+        "iva-checkbox input[type='checkbox']",
+        "input[type='checkbox']",
+    ]
+
+    SEND_INVITE_BUTTON_LOCATORS = [
+        "button:has-text('Добавить')",
+        "button:has(span:has-text('Добавить'))",
+    ]
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
@@ -190,7 +218,7 @@ class EventPage(BasePage):
             if "join:" in href:
                 return href
 
-        full_text = (self.page.content() or "")
+        full_text = self.page.content() or ""
         import re
         match = re.search(r'https?://[^\s"\'<>]+#?join:[^\s"\'<>]+', full_text)
         if match:
@@ -215,7 +243,7 @@ class EventPage(BasePage):
             if "join:" in href:
                 return href
 
-        full_text = (self.page.content() or "")
+        full_text = self.page.content() or ""
         import re
         match = re.search(r'https?://[^\s"\'<>]+#?join:[^\s"\'<>]+', full_text)
         if match:
@@ -255,8 +283,267 @@ class EventPage(BasePage):
         self.safe_click(self.PARTICIPANTS_PLUS_BOTTOM_LOCATOR)
 
     def add_participants_bottom(self):
-        self.page.locator(self.ADD_PARTICIPANTS_LOCATOR).first.wait_for(
-            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        selectors = (
+            [self.ADD_PARTICIPANTS_LOCATORS]
+            if isinstance(self.ADD_PARTICIPANTS_LOCATORS, str)
+            else self.ADD_PARTICIPANTS_LOCATORS
         )
-        self.safe_click(self.ADD_PARTICIPANTS_LOCATOR)
+        add_participants_button = self._find_first_visible(
+            selectors, timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(add_participants_button)
 
+    def _wait_invite_loader_disappear(self, timeout_ms: int = 7000):
+        loader = self.page.locator("shared-invite-interlocutors-list div.loader").first
+        try:
+            if loader.count() > 0:
+                loader.wait_for(state="hidden", timeout=timeout_ms)
+        except Exception:
+            pass
+
+    def _escape_xpath_text(self, value: str) -> str:
+        if "'" not in value:
+            return f"'{value}'"
+        if '"' not in value:
+            return f'"{value}"'
+        parts = value.split("'")
+        return "concat(" + ", \"'\", ".join([f"'{part}'" for part in parts]) + ")"
+
+    def fill_invited_participant_email(self, email: str):
+        input_locator = self._find_first_visible(
+            self.INVITE_EMAIL_INPUT_LOCATORS,
+            timeout=config.EXPLICIT_WAIT * 1000
+        )
+
+        input_locator.click()
+        input_locator.fill("")
+        input_locator.fill(email)
+
+        self.page.wait_for_timeout(400)
+
+        try:
+            input_locator.press("Enter")
+        except Exception:
+            pass
+
+        self._wait_invite_loader_disappear(timeout_ms=7000)
+        self.page.wait_for_timeout(500)
+
+    def _find_participant_row(self, value: str, timeout_ms: int = 10000):
+        escaped_value = self._escape_xpath_text(value)
+
+        xpath_variants = [
+            f"xpath=//shared-interlocutors-item[contains(., {escaped_value})]",
+            f"xpath=//shared-invite-interlocutors-list//shared-interlocutors-item[contains(., {escaped_value})]",
+        ]
+
+        for _ in range(max(1, timeout_ms // 250)):
+            self._wait_invite_loader_disappear(timeout_ms=1500)
+
+            for xpath in xpath_variants:
+                row = self.page.locator(xpath).first
+                try:
+                    if row.count() > 0 and row.is_visible():
+                        return row
+                except Exception:
+                    continue
+
+            self.page.wait_for_timeout(250)
+
+        for selector in self.RESULT_ROW_LOCATORS:
+            rows = self.page.locator(selector)
+            count = rows.count()
+            for idx in range(min(count, 20)):
+                row = rows.nth(idx)
+                try:
+                    if row.is_visible():
+                        return row
+                except Exception:
+                    continue
+
+        raise AssertionError(f"Не удалось найти строку участника: {value}")
+
+    def _participant_row_is_selected(self, participant_row) -> bool:
+        checkbox_input = participant_row.locator("iva-checkbox input[type='checkbox']").first
+        try:
+            if checkbox_input.count() > 0:
+                try:
+                    if checkbox_input.is_checked():
+                        return True
+                except Exception:
+                    pass
+
+                checked_attr = checkbox_input.get_attribute("checked")
+                if checked_attr is not None:
+                    return True
+        except Exception:
+            pass
+
+        try:
+            aria_checked = (participant_row.locator("iva-checkbox").first.get_attribute("aria-checked") or "").lower()
+            if aria_checked == "true":
+                return True
+        except Exception:
+            pass
+
+        try:
+            classes = (participant_row.get_attribute("class") or "").lower()
+            if "selected" in classes or "checked" in classes or "active" in classes:
+                return True
+        except Exception:
+            pass
+
+        return False
+
+    def _wait_add_button_enabled(self, timeout_ms: int = 7000) -> bool:
+        for _ in range(max(1, timeout_ms // 250)):
+            self._wait_invite_loader_disappear(timeout_ms=1000)
+
+            for selector in self.SEND_INVITE_BUTTON_LOCATORS:
+                buttons = self.page.locator(selector)
+                count = buttons.count()
+                for idx in range(count):
+                    button = buttons.nth(idx)
+                    try:
+                        if button.is_visible() and button.is_enabled():
+                            return True
+                    except Exception:
+                        continue
+
+            self.page.wait_for_timeout(250)
+
+        return False
+
+    def select_invited_participant_checkbox(self, value: str):
+        participant_row = self._find_participant_row(value, timeout_ms=config.EXPLICIT_WAIT * 1000)
+        participant_row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        checkbox_frame = participant_row.locator("iva-checkbox div.iva-checkbox_frame").first
+        checkbox_input = participant_row.locator("iva-checkbox input[type='checkbox']").first
+
+        last_error = None
+
+        for _ in range(5):
+            try:
+                self._wait_invite_loader_disappear(timeout_ms=2000)
+
+                if checkbox_frame.count() > 0 and checkbox_frame.is_visible():
+                    self.safe_click(checkbox_frame)
+                elif checkbox_input.count() > 0:
+                    try:
+                        checkbox_input.check(force=True)
+                    except Exception:
+                        handle = checkbox_input.element_handle()
+                        if handle is not None:
+                            self.page.evaluate(
+                                """
+                                (el) => {
+                                    el.checked = true;
+                                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                                """,
+                                handle,
+                            )
+                else:
+                    self.safe_click(participant_row)
+
+                self.page.wait_for_timeout(300)
+                self._wait_invite_loader_disappear(timeout_ms=2000)
+
+                if self._participant_row_is_selected(participant_row):
+                    if self._wait_add_button_enabled(timeout_ms=3000):
+                        return
+
+                try:
+                    label = participant_row.locator("iva-checkbox label").first
+                    if label.count() > 0 and label.is_visible():
+                        self.safe_click(label)
+                        self.page.wait_for_timeout(300)
+                        self._wait_invite_loader_disappear(timeout_ms=2000)
+                        if self._wait_add_button_enabled(timeout_ms=3000):
+                            return
+                except Exception:
+                    pass
+
+                try:
+                    self.safe_click(participant_row)
+                    self.page.wait_for_timeout(300)
+                    self._wait_invite_loader_disappear(timeout_ms=2000)
+                    if self._wait_add_button_enabled(timeout_ms=3000):
+                        return
+                except Exception:
+                    pass
+
+            except Exception as e:
+                last_error = e
+
+        debug_text = ""
+        try:
+            debug_text = participant_row.inner_text()
+        except Exception:
+            pass
+
+        raise AssertionError(
+            f"Не удалось выбрать участника: {value}. "
+            f"Текст строки: {debug_text}. "
+            f"Последняя ошибка: {last_error}"
+        )
+
+    def _is_button_actionable(self, button):
+        try:
+            if not button.is_visible():
+                return False
+        except Exception:
+            return False
+
+        try:
+            return button.is_enabled()
+        except Exception:
+            return False
+
+    def submit_invite_participant(self):
+        if not self._wait_add_button_enabled(timeout_ms=8000):
+            debug_lines = []
+
+            for selector in self.SEND_INVITE_BUTTON_LOCATORS:
+                buttons = self.page.locator(selector)
+                count = buttons.count()
+                debug_lines.append(f"selector={selector}, count={count}")
+
+                for idx in range(count):
+                    button = buttons.nth(idx)
+                    try:
+                        debug_lines.append(
+                            f"idx={idx}, visible={button.is_visible()}, enabled={button.is_enabled()}, "
+                            f"disabled={button.get_attribute('disabled')}, "
+                            f"aria-disabled={button.get_attribute('aria-disabled')}, "
+                            f"text={(button.inner_text() or '').strip()}"
+                        )
+                    except Exception as e:
+                        debug_lines.append(f"idx={idx}, read_error={e}")
+
+            try:
+                self.page.screenshot(path="invite_participant_debug.png", full_page=True)
+            except Exception:
+                pass
+
+            raise AssertionError(
+                "Кнопка добавления участника осталась неактивной после выбора участника.\n"
+                + "\n".join(debug_lines)
+            )
+
+        for selector in self.SEND_INVITE_BUTTON_LOCATORS:
+            buttons = self.page.locator(selector)
+            count = buttons.count()
+
+            for idx in range(count):
+                button = buttons.nth(idx)
+                try:
+                    if button.is_visible() and button.is_enabled():
+                        self.safe_click(button)
+                        return
+                except Exception:
+                    continue
+
+        raise AssertionError("Не удалось нажать кнопку 'Добавить', хотя она стала активной")

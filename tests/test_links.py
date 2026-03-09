@@ -348,10 +348,11 @@ def test_23_link_for_the_invited(driver):
 
     flow = EventFlow(driver)
     event_id = flow.create_event(return_to_list=False)
-    #Так мы создаем эвент завтра надо:
-    #1)Открыть список участников
-    #2)Добавить открытие списка в event_page
-    #3)Добавить приглашение пользователя в мероприятие в event_flow
+    flow.add_participant_in_event(config.MAIL_USERNAME  )
+
+    assert event_id in (driver.url or ""), (
+        f"После приглашения участника потеряли текущую конференцию: {driver.url}"
+    )
     #4)Открыть почту
     #5)Перейти по ссылке
     #6)У меня есть аккаунт
