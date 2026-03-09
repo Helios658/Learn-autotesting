@@ -3,6 +3,7 @@ import pytest
 from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
+from pages.mail_page import MailPage
 
 
 @pytest.mark.smoke
@@ -346,14 +347,34 @@ def test_22_guest_link_registered_adfs_with_authorization(driver):
 def test_23_link_for_the_invited(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
+    invited_email = config.USER_EMAIL
+    invited_password = config.USER_PASSWORD
+    assert invited_email, "Не задан email приглашенного пользователя"
+    assert invited_password, "Не задан пароль приглашенного пользователя"
+
     flow = EventFlow(driver)
     event_id = flow.create_event(return_to_list=False)
-    flow.add_participant_in_event(config.MAIL_USERNAME  )
+    flow.add_participant_in_event(invited_email)
 
     assert event_id in (driver.url or ""), (
         f"После приглашения участника потеряли текущую конференцию: {driver.url}"
     )
-    #4)Открыть почту
-    #5)Перейти по ссылке
-    #6)У меня есть аккаунт
-    #7)Ввести логин и пароль
+
+    mail_page = MailPage(driver)
+    mail_page.login()
+    mail_page.open_invitation_email(wait_for_email=True)
+    invited_join_link = mail_page.get_invitation_join_link()
+    assert "join:" in invited_join_link, f"Не удалось извлечь ссылку приглашения: {invited_join_link}"
+
+
+    final_url, is_joined = flow.join_via_guest_link_as_registered_user_login_before_open_guest_link(
+        guest_url=invited_join_link,
+        username=invited_email,
+        password=invited_password,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в конференцию приглашенного пользователя, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
