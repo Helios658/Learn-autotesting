@@ -232,8 +232,19 @@ class EventFlow:
             except PlaywrightTimeoutError:
                 guest_page.goto(guest_url, wait_until="domcontentloaded")
                 GuestJoinPage(guest_page).click_already_have_account()
+                GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
 
-            if not login_page.wait_for_successful_login(timeout=20):
+            is_logged_in = login_page.wait_for_successful_login(timeout=20)
+            if not is_logged_in:
+                guest_page.goto(guest_url, wait_until="domcontentloaded")
+                try:
+                    GuestJoinPage(guest_page).click_already_have_account()
+                    GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+                except PlaywrightTimeoutError:
+                    pass
+                is_logged_in = login_page.wait_for_successful_login(timeout=20)
+
+            if not is_logged_in:
                 raise AssertionError(f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}")
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
