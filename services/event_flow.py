@@ -215,6 +215,7 @@ class EventFlow:
             guest_context.close()
 
     def join_via_guest_link_as_registered_user_login_before_open_guest_link(self, guest_url: str, username: str, password: str):
+        """Логин зарегистрированным пользователем в свежем incognito-контексте, затем открытие guest-link."""
         browser = self.driver.context.browser
         if browser is None:
             raise AssertionError("Не удалось получить browser из текущего driver context")
@@ -239,9 +240,14 @@ class EventFlow:
                 guest_page.goto(guest_url, wait_until="domcontentloaded")
                 try:
                     GuestJoinPage(guest_page).click_already_have_account()
-                    GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
-                except PlaywrightTimeoutError:
+                except AssertionError:
                     pass
+
+                try:
+                    GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+                except (PlaywrightTimeoutError, AssertionError):
+                    pass
+
                 is_logged_in = login_page.wait_for_successful_login(timeout=20)
 
             if not is_logged_in:
