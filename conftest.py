@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from playwright.sync_api import Playwright, sync_playwright
 from pathlib import Path
 from datetime import datetime
-
 from utils.artifacts import save_artifacts
 from config import config
 import socket
