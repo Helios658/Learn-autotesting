@@ -378,3 +378,81 @@ def test_23_link_for_the_invited(driver):
     is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
     is_join_url = "/v2/join?token=" in final_url
     assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("24")
+def test_24_ticket_link_registered_user_with_authorization(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    ticket_user_email = config.TEST_USER2_EMAIL
+    ticket_user_password = config.TEST_USER2_PASSWORD
+    assert ticket_user_email, "Не задан email пользователя для ticket-ссылки"
+    assert ticket_user_password, "Не задан пароль пользователя для ticket-ссылки"
+
+    flow = EventFlow(driver)
+    flow.switch_to_legacy_web_interface()
+
+    ticket_url = flow.create_legacy_event_and_get_single_ticket_link()
+    assert ticket_url.startswith("http"), f"Некорректная ticket-ссылка: {ticket_url}"
+
+    final_url, is_joined = flow.join_via_ticket_link_as_registered_user_login_before_open_ticket_link(
+        ticket_url=ticket_url,
+        username=ticket_user_email,
+        password=ticket_user_password,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в мероприятие по ticket-ссылке, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("25")
+def test_25_ticket_link_registered_user_with_authorization_open_link_first(driver):
+    """Сценарий: сразу открыть ticket-ссылку в incognito и войти через 'У меня есть аккаунт'."""
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    ticket_user_email = config.TEST_USER2_EMAIL
+    ticket_user_password = config.TEST_USER2_PASSWORD
+    assert ticket_user_email, "Не задан email пользователя для ticket-ссылки"
+    assert ticket_user_password, "Не задан пароль пользователя для ticket-ссылки"
+
+    flow = EventFlow(driver)
+    flow.switch_to_legacy_web_interface()
+
+    ticket_url = flow.create_legacy_event_and_get_single_ticket_link()
+    assert ticket_url.startswith("http"), f"Некорректная ticket-ссылка: {ticket_url}"
+
+    final_url, is_joined = flow.join_via_ticket_link_as_registered_user(
+        ticket_url=ticket_url,
+        username=ticket_user_email,
+        password=ticket_user_password,
+    )
+
+    assert is_joined, f"UI не подтвердил вход в мероприятие по ticket-ссылке, URL: {final_url}"
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа получен неожиданный URL: {final_url}"
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("26")
+def test_26_ticket_link_guest_user_open_link_first(driver):
+    """Сценарий: сразу открыть ticket-ссылку в incognito и войти как гость."""
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    flow.switch_to_legacy_web_interface()
+
+    ticket_url = flow.create_legacy_event_and_get_single_ticket_link()
+    assert ticket_url.startswith("http"), f"Некорректная ticket-ссылка: {ticket_url}"
+
+    final_url = flow.join_via_ticket_link_as_guest(
+        ticket_url=ticket_url,
+        guest_name="Auto Guest",
+    )
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?token=" in final_url
+    assert is_conference_url or is_join_url, f"После входа гостем получен неожиданный URL: {final_url}"

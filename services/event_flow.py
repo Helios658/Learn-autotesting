@@ -6,6 +6,7 @@ from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
 from pages.login_page import LoginPage
+from pages.legacy_event_page import LegacyEventPage
 from config import config
 
 UUID_RE = re.compile(
@@ -278,3 +279,41 @@ class EventFlow:
         self.event_page.fill_invited_participant_email(participant_email)
         self.event_page.select_invited_participant_checkbox(participant_email)
         self.event_page.submit_invite_participant()
+
+    def switch_to_legacy_web_interface(self):
+        page = LegacyEventPage(self.driver)
+        page.open()
+        page.switch_to_legacy()
+
+    def create_legacy_event_and_get_single_ticket_link(self) -> str:
+        """Создает мероприятие в старом интерфейсе и возвращает сгенерированную ticket-ссылку."""
+        ticket_url = LegacyEventPage(self.driver).create_event_with_single_ticket()
+        if not (ticket_url or "").startswith("http"):
+            raise AssertionError(
+                f"Не удалось получить валидную ticket-ссылку в старом интерфейсе: {ticket_url!r}"
+            )
+        return ticket_url
+
+    def join_via_ticket_link_as_registered_user_login_before_open_ticket_link(
+        self, ticket_url: str, username: str, password: str
+    ):
+        """Вход в свежем incognito-контексте и переход по ticket-ссылке."""
+        if not (ticket_url or "").startswith("http"):
+            raise AssertionError(f"Некорректная ticket-ссылка для входа: {ticket_url!r}")
+        return self.join_via_guest_link_as_registered_user_login_before_open_guest_link(
+            guest_url=ticket_url,
+            username=username,
+            password=password,
+        )
+
+    def join_via_ticket_link_as_registered_user(self, ticket_url: str, username: str, password: str):
+        """Открыть ticket-ссылку в новом incognito-контексте и войти через "У меня есть аккаунт"."""
+        return self.join_via_guest_link_as_registered_user(
+            guest_url=ticket_url,
+            username=username,
+            password=password,
+        )
+
+    def join_via_ticket_link_as_guest(self, ticket_url: str, guest_name: str = "Auto Guest"):
+        """Открыть ticket-ссылку в новом incognito-контексте и войти как гость."""
+        return self.join_guest_via_link(guest_url=ticket_url, guest_name=guest_name)

@@ -86,7 +86,6 @@ class EventPage(BasePage):
         "iva-checkbox input[type='checkbox']",
         "input[type='checkbox']",
     ]
-
     SEND_INVITE_BUTTON_LOCATORS = [
         "button:has-text('Добавить')",
         "button:has(span:has-text('Добавить'))",
