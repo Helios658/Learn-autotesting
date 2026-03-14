@@ -6,6 +6,7 @@ from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
 from pages.login_page import LoginPage
+from pages.legacy_event_page import LegacyEventPage
 from config import config
 
 UUID_RE = re.compile(
@@ -61,17 +62,21 @@ class EventFlow:
             for idx in range(visible_count):
                 card = cards.nth(idx)
                 try:
-                    card.scroll_into_view_if_needed(timeout=2000)
-                except Exception:
-                    pass
+                    try:
+                        card.scroll_into_view_if_needed(timeout=1500)
+                    except Exception:
+                        pass
 
-                try:
-                    card.click(timeout=2000)
-                except Exception:
-                    card.click(force=True)
+                    try:
+                        card.click(timeout=2000)
+                    except Exception:
+                        card.click(force=True, timeout=2000)
 
-                if target_event_id in (self.driver.url or ""):
-                    return card
+                    if target_event_id in (self.driver.url or ""):
+                        return card
+                except Exception:
+                    # В длинных виртуализованных списках часть карточек может быть недоступна в момент клика.
+                    continue
 
             prev_top = scroller.evaluate("el => el.scrollTop")
             scroller.evaluate(
@@ -215,7 +220,14 @@ class EventFlow:
             guest_context.close()
 
     def join_via_guest_link_as_registered_user_login_before_open_guest_link(self, guest_url: str, username: str, password: str):
-        guest_context, guest_page = self.open_guest_link_in_incognito(guest_url)
+        """Логин зарегистрированным пользователем в свежем incognito-контексте, затем открытие guest-link."""
+        browser = self.driver.context.browser
+        if browser is None:
+            raise AssertionError("Не удалось получить browser из текущего driver context")
+
+        # Принудительно создаем новый чистый контекст (без авторизаций из текущей сессии admin).
+        guest_context = browser.new_context(ignore_https_errors=True, storage_state={"cookies": [], "origins": []})
+        guest_page = guest_context.new_page()
         try:
             login_page = LoginPage(guest_page)
 
@@ -225,10 +237,29 @@ class EventFlow:
                 login_page.enter_password(password)
                 login_page.click_login_button()
             except PlaywrightTimeoutError:
-                guest_page.goto(config.LOGIN_URL, wait_until="domcontentloaded")
+                guest_page.goto(guest_url, wait_until="domcontentloaded")
+                GuestJoinPage(guest_page).click_already_have_account()
                 GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
 
-            if not login_page.wait_for_successful_login(timeout=20):
+            is_logged_in = login_page.wait_for_successful_login(timeout=20)
+            if not is_logged_in:
+                # В некоторых окружениях после авторизации остаемся на /v2/login,
+                # поэтому делаем дополнительную попытку входа через guest modal.
+                guest_page.goto(guest_url, wait_until="domcontentloaded")
+                try:
+                    GuestJoinPage(guest_page).click_already_have_account()
+                except AssertionError:
+                    # Кнопка "У меня есть аккаунт" может отсутствовать, если форма логина уже открыта.
+                    pass
+
+                try:
+                    GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+                except (PlaywrightTimeoutError, AssertionError):
+                    pass
+
+                is_logged_in = login_page.wait_for_successful_login(timeout=20)
+
+            if not is_logged_in:
                 raise AssertionError(f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}")
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
@@ -248,6 +279,39 @@ class EventFlow:
             username=username,
             password=password,
         )
+
+
+    def switch_to_legacy_web_interface(self):
+        page = LegacyEventPage(self.driver)
+        page.open()
+        page.switch_to_legacy()
+
+    def create_legacy_event_and_get_single_ticket_link(self) -> str:
+        """Создает мероприятие в старом интерфейсе и возвращает сгенерированную ticket-ссылку."""
+        ticket_url = LegacyEventPage(self.driver).create_event_with_single_ticket()
+        return ticket_url
+
+    def join_via_ticket_link_as_registered_user_login_before_open_ticket_link(
+        self, ticket_url: str, username: str, password: str
+    ):
+        """Вход в свежем incognito-контексте и переход по ticket-ссылке."""
+        return self.join_via_guest_link_as_registered_user_login_before_open_guest_link(
+            guest_url=ticket_url,
+            username=username,
+            password=password,
+        )
+
+    def join_via_ticket_link_as_registered_user(self, ticket_url: str, username: str, password: str):
+        """Открыть ticket-ссылку в новом incognito-контексте и войти через "У меня есть аккаунт"."""
+        return self.join_via_guest_link_as_registered_user(
+            guest_url=ticket_url,
+            username=username,
+            password=password,
+        )
+
+    def join_via_ticket_link_as_guest(self, ticket_url: str, guest_name: str = "Auto Guest"):
+        """Открыть ticket-ссылку в новом incognito-контексте и войти как гость."""
+        return self.join_guest_via_link(guest_url=ticket_url, guest_name=guest_name)
 
     def add_participant_in_event(self, participant_email: str):
         self.event_page.open_participants_list()
