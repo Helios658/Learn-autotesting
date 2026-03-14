@@ -30,6 +30,16 @@ class GuestJoinPage:
         "input[e2e-id='login-page.login-form.login-input']",
         "input[type='email']",
     ]
+    POST_MAIL_JOIN_BUTTON_LOCATORS = [
+        "[e2e-id='auth-info__join-button']",
+        "button[e2e-id='auth-info__join-button']",
+        "button:has-text('Войти')",
+        "button:has-text('Продолжить')",
+        "button:has-text('Присоединиться')",
+        "button:has-text('Подключиться')",
+        "button:has-text('Join')",
+        "button:has-text('Continue')",
+    ]
 
     def __init__(self, page):
         self.page = page
@@ -61,11 +71,9 @@ class GuestJoinPage:
         field.fill(name)
 
     def click_join(self) -> None:
-        try:
-            self._find_visible(self.JOIN_BUTTON_LOCATORS, timeout_ms=8_000).click()
-            return
-        except AssertionError:
-            pass
+        join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
+        join_btn.wait_for(state="visible", timeout=12000)
+        join_btn.click(force=True)
 
         login_btn = self.page.get_by_role(
             "button",
@@ -100,3 +108,40 @@ class GuestJoinPage:
 
         self._find_visible(self.HAVE_ACCOUNT_LOCATORS, timeout_ms=15_000).click()
         return True
+
+    def click_join_after_mail_link(self) -> None:
+        try:
+            self._find_visible(self.POST_MAIL_JOIN_BUTTON_LOCATORS, timeout_ms=12_000).click()
+            return
+        except AssertionError:
+            pass
+
+        btn = self.page.get_by_role(
+            "button",
+            name=re.compile(r"Войти|Продолжить|Присоединиться|Подключиться|Join|Continue", re.IGNORECASE),
+        ).first
+        btn.click(timeout=8000)
+
+    def finalize_join_from_mail_link(self, timeout_ms: int = 20_000) -> bool:
+        deadline = time.time() + timeout_ms / 1000
+
+        while time.time() < deadline:
+            current_url = self.page.url or ""
+            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
+                return True
+
+            try:
+                join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
+                if join_btn.count() > 0 and join_btn.is_visible():
+                    join_btn.click(force=True)
+                    self.page.wait_for_timeout(2500)
+            except Exception:
+                pass
+
+            current_url = self.page.url or ""
+            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
+                return True
+
+            self.page.wait_for_timeout(1500)
+
+        return False

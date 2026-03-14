@@ -7,6 +7,7 @@ from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
 from pages.login_page import LoginPage
 from pages.legacy_event_page import LegacyEventPage
+from pages.registration_page import RegistrationPage
 from config import config
 
 UUID_RE = re.compile(
@@ -317,3 +318,154 @@ class EventFlow:
     def join_via_ticket_link_as_guest(self, ticket_url: str, guest_name: str = "Auto Guest"):
         """Открыть ticket-ссылку в новом incognito-контексте и войти как гость."""
         return self.join_guest_via_link(guest_url=ticket_url, guest_name=guest_name)
+
+    def create_event_draft_with_registration(self, return_to_list: bool = False) -> str:
+        self.event_page.open()
+        self.event_page.click_add()
+        self.event_page.select_simple_event_template()
+        self.event_page.enable_registration_form()
+
+        with self.driver.expect_response(
+            lambda r: (
+                "/api/rest/" in r.url
+                and ("conference" in r.url or "session" in r.url)
+                and r.request.method in ("POST", "PUT")
+            ),
+            timeout=60_000,
+        ) as response_info:
+            self.event_page.click_plan_draft()
+
+        event_id = None
+
+        try:
+            body = response_info.value.json()
+            event_id = body.get("conferenceSessionId") or body.get("id")
+        except Exception:
+            event_id = None
+
+        if not event_id:
+            current_url = self.driver.url or ""
+            match = UUID_RE.search(current_url)
+            if match:
+                event_id = match.group(0)
+
+        if not event_id or not UUID_RE.match(event_id):
+            raise AssertionError(
+                f"Не удалось получить id мероприятия после создания черновика. URL={self.driver.url}"
+            )
+
+        if return_to_list:
+            self.event_page.back_to_list()
+
+        return event_id
+
+    def get_registration_link_for_event(self, target_event_id: str) -> str:
+        current_url = self.driver.url or ""
+
+        if target_event_id not in current_url:
+            self.open_event_from_list(target_event_id)
+
+        self.driver.wait_for_load_state("domcontentloaded")
+        self.driver.wait_for_timeout(1000)
+
+        # если модалка уже успела появиться — закрываем
+        try:
+            self.event_page.close_event_start_popup_if_present()
+        except Exception:
+            pass
+
+        self.event_page.click_copy_registration_link()
+
+        # Ждем, пока ссылка реально появится в буфере
+        deadline = time.time() + 10
+        registration_url = ""
+
+        while time.time() < deadline:
+            try:
+                registration_url = self._read_link_from_clipboard().strip()
+            except Exception:
+                registration_url = ""
+
+            if registration_url.startswith("http") or "join:" in registration_url:
+                return registration_url
+
+            try:
+                self.event_page.close_event_start_popup_if_present()
+            except Exception:
+                pass
+
+            try:
+                self.event_page.click_copy_registration_link()
+            except Exception:
+                pass
+
+            self.driver.wait_for_timeout(700)
+
+        raise AssertionError(
+            f"Не удалось получить registration-link из буфера обмена: {registration_url}"
+        )
+
+    def register_via_registration_link_as_authorized_user(
+            self,
+            registration_url: str,
+            email: str,
+            password: str,
+    ):
+        guest_context, guest_page = self.open_guest_link_in_incognito(registration_url)
+        try:
+            registration_page = RegistrationPage(guest_page)
+
+            registration_page.enter_email(email)
+            registration_page.click_register()
+
+            login_page = LoginPage(guest_page)
+            login_page.enter_username(email)
+            login_page.enter_password(password)
+            login_page.click_login_button()
+
+            guest_page.wait_for_load_state("domcontentloaded")
+
+            try:
+                login_page.click_login_button()
+            except Exception:
+                pass
+
+            guest_page.wait_for_load_state("domcontentloaded")
+
+            joined = registration_page.wait_until_event_starts_and_enter(timeout_ms=90_000)
+            return guest_page.url, joined
+        finally:
+            guest_context.close()
+
+    def submit_registration_link_and_login(
+            self,
+            registration_url: str,
+            email: str,
+            password: str,
+    ):
+        guest_context, guest_page = self.open_guest_link_in_incognito(registration_url)
+        try:
+            registration_page = RegistrationPage(guest_page)
+
+            registration_page.enter_email(email)
+            registration_page.click_register()
+
+            login_page = LoginPage(guest_page)
+            login_page.enter_username(email)
+            login_page.enter_password(password)
+            login_page.click_login_button()
+
+            guest_page.wait_for_load_state("domcontentloaded")
+
+            try:
+                login_page.click_login_button()
+            except Exception:
+                pass
+
+            guest_page.wait_for_load_state("domcontentloaded")
+            guest_page.wait_for_timeout(2000)
+
+            return guest_context, guest_page
+        except Exception:
+            guest_context.close()
+            raise

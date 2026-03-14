@@ -4,6 +4,7 @@ from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
 from pages.mail_page import MailPage
+from pages.guest_join_page import GuestJoinPage
 
 
 @pytest.mark.smoke
@@ -456,3 +457,51 @@ def test_26_ticket_link_guest_user_open_link_first(driver):
     is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
     is_join_url = "/v2/join?token=" in final_url
     assert is_conference_url or is_join_url, f"После входа гостем получен неожиданный URL: {final_url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("27")
+def test_27_registration_link_authorized_user(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+
+    event_id = flow.create_event_draft_with_registration(return_to_list=False)
+    registration_url = flow.get_registration_link_for_event(event_id)
+
+    assert registration_url, "Не получили ссылку регистрации"
+    assert registration_url.startswith("http") or "join:" in registration_url, (
+        f"Некорректная ссылка регистрации: {registration_url}"
+    )
+
+    guest_context, guest_page = flow.submit_registration_link_and_login(
+        registration_url=registration_url,
+        email=config.USER_EMAIL,
+        password=config.USER_PASSWORD,
+    )
+
+    try:
+        mail_page = MailPage(driver)
+        mail_page.login()
+        mail_page.open_invitation_email(wait_for_email=True)
+        invited_join_link = mail_page.get_invitation_join_link()
+
+        assert "join:" in invited_join_link, (
+            f"Не удалось извлечь ссылку приглашения: {invited_join_link}"
+        )
+
+        guest_page.goto(invited_join_link, wait_until="domcontentloaded")
+        guest_page.wait_for_load_state("domcontentloaded")
+        guest_page.wait_for_timeout(2000)
+
+        guest_join_page = GuestJoinPage(guest_page)
+        is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=20_000)
+
+        final_url = guest_page.url
+        is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+
+        assert is_joined, f"Не удалось завершить вход по ссылке из письма. URL: {final_url}"
+        assert is_conference_url, f"После перехода по ссылке из письма не вошли в мероприятие. URL: {final_url}"
+
+    finally:
+        guest_context.close()

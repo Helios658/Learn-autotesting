@@ -90,6 +90,36 @@ class EventPage(BasePage):
         "button:has-text('Добавить')",
         "button:has(span:has-text('Добавить'))",
     ]
+    SIMPLE_EVENT_TEMPLATE_CARD = (
+        "xpath=//div[contains(@class, 'conference-card')]"
+        "[.//h4[contains(@class, 'conference-name') and normalize-space()='Мероприятие']]"
+    )
+
+    JOIN_SETTINGS_SECTION = [
+        "[e2e-id='join-settings']",
+        "shared-settings-section[e2e-id='join-settings']",
+    ]
+
+    REGISTRATION_FORM_CHECKBOX = [
+        "input[name='registrationForm']",
+        "input[id*='_input'][name='registrationForm']",
+    ]
+
+    DRAFT_PLAN_CONFERENCE_BUTTON = "[e2e-id='draft-plan-conference-btn']"
+
+    REGISTRATION_LINK_COPY_BUTTON = "[e2e-id='registration-link-copy-button']"
+
+    EVENT_START_MODAL_LOCATORS = [
+        "app-conference-calling-modal",
+        "iva-dynamic app-conference-calling-modal",
+    ]
+
+    EVENT_START_MODAL_CLOSE_LOCATORS = [
+        "app-conference-calling-modal header button.iva-icon-button",
+        "app-conference-calling-modal button.iva-icon-button",
+        "app-conference-calling-modal svg-icon[src*='close.svg']",
+        "app-conference-calling-modal button:has(svg-icon[src*='close.svg'])",
+    ]
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
@@ -546,3 +576,110 @@ class EventPage(BasePage):
                     continue
 
         raise AssertionError("Не удалось нажать кнопку 'Добавить', хотя она стала активной")
+
+    def select_simple_event_template(self):
+        self.page.locator(self.SIMPLE_EVENT_TEMPLATE_CARD).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.SIMPLE_EVENT_TEMPLATE_CARD)
+
+    def open_join_settings(self):
+        section = self._find_first_visible(self.JOIN_SETTINGS_SECTION, timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(section)
+
+    def enable_registration_form(self):
+        self.open_join_settings()
+
+        checkbox = self.page.locator("input[name='registrationForm']").first
+        checkbox.wait_for(state="attached", timeout=config.EXPLICIT_WAIT * 1000)
+
+        try:
+            if checkbox.is_checked():
+                return
+        except Exception:
+            pass
+
+        # Сначала пробуем кликнуть по видимой кастомной обертке рядом с checkbox
+        click_candidates = [
+            "xpath=//input[@name='registrationForm']/following-sibling::*[1]",
+            "xpath=//input[@name='registrationForm']/parent::*",
+            "xpath=//input[@name='registrationForm']/ancestor::*[self::label or self::div][1]",
+        ]
+
+        for selector in click_candidates:
+            try:
+                candidate = self.page.locator(selector).first
+                if candidate.count() > 0 and candidate.is_visible():
+                    candidate.click(force=True)
+                    self.page.wait_for_timeout(300)
+
+                    try:
+                        if checkbox.is_checked():
+                            return
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+
+        # Если визуальный клик не помог — включаем напрямую через JS
+        handle = checkbox.element_handle()
+        if handle is None:
+            raise AssertionError("Не удалось получить element_handle для registrationForm checkbox")
+
+        self.page.evaluate(
+            """
+            (el) => {
+                el.checked = true;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            }
+            """,
+            handle,
+        )
+
+        self.page.wait_for_timeout(500)
+
+        assert checkbox.is_checked(), "Чекбокс registrationForm не включился"
+
+    def click_plan_draft(self):
+        self.page.locator(self.DRAFT_PLAN_CONFERENCE_BUTTON).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        self.safe_click(self.DRAFT_PLAN_CONFERENCE_BUTTON)
+
+    def click_copy_registration_link(self):
+        button = self.page.locator("[e2e-id='registration-link-copy-button']").first
+
+        try:
+            button.wait_for(state="visible", timeout=3000)
+            button.click(force=True)
+            self.page.wait_for_timeout(500)
+            return
+        except Exception:
+            pass
+
+        self.close_event_start_popup_if_present()
+
+        # 2 попытка
+        button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        button.click(force=True)
+        self.page.wait_for_timeout(700)
+
+    def close_event_start_popup_if_present(self) -> bool:
+        for modal_selector in self.EVENT_START_MODAL_LOCATORS:
+            try:
+                modal = self.page.locator(modal_selector).first
+                if modal.count() > 0 and modal.is_visible():
+                    for close_selector in self.EVENT_START_MODAL_CLOSE_LOCATORS:
+                        try:
+                            close_btn = self.page.locator(close_selector).first
+                            if close_btn.count() > 0 and close_btn.is_visible():
+                                close_btn.click(force=True)
+                                self.page.wait_for_timeout(700)
+                                return True
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+        return False
