@@ -40,6 +40,15 @@ class GuestJoinPage:
         "button:has-text('Join')",
         "button:has-text('Continue')",
     ]
+    OVERLAY_CLOSE_LOCATORS = [
+        "button[aria-label='Закрыть']",
+        "button[aria-label='Close']",
+        "button:has-text('Закрыть')",
+        "button:has-text('Close')",
+        ".cdk-overlay-container button.iva-icon-button",
+        ".cdk-overlay-pane button.iva-icon-button",
+        "[e2e-id*='close']",
+    ]
 
     def __init__(self, page):
         self.page = page
@@ -73,16 +82,57 @@ class GuestJoinPage:
     def click_join(self) -> None:
         join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
         join_btn.wait_for(state="visible", timeout=12000)
-        join_btn.click(force=True)
 
-        login_btn = self.page.get_by_role(
-            "button",
-            name=re.compile(r"Войти|Join|Продолжить", re.IGNORECASE),
-        ).first
-        login_btn.click(timeout=8000)
+        # Ждем, пока кнопка станет enabled
+        deadline = time.time() + 12
+        while time.time() < deadline:
+            try:
+                if join_btn.is_enabled():
+                    break
+            except Exception:
+                pass
+            self.close_overlay_if_present()
+            self.page.wait_for_timeout(300)
+        else:
+            raise AssertionError("Кнопка auth-info__join-button осталась disabled")
+
+        # Пробуем обычный клик
+        try:
+            join_btn.click(timeout=3000)
+            return
+        except Exception:
+            pass
+
+        # Если мешает overlay — закрываем и пробуем снова
+        self.close_overlay_if_present()
+
+        try:
+            join_btn.click(force=True, timeout=3000)
+            return
+        except Exception:
+            pass
+
+        handle = join_btn.element_handle()
+        if handle:
+            self.page.evaluate("(el) => el.click()", handle)
+            return
+
+        raise AssertionError("Не удалось нажать кнопку auth-info__join-button")
 
     def join(self, name: str) -> None:
         self.enter_guest_name(name)
+
+        deadline = time.time() + 8
+        join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
+
+        while time.time() < deadline:
+            try:
+                if join_btn.is_enabled():
+                    break
+            except Exception:
+                pass
+            self.page.wait_for_timeout(300)
+
         self.click_join()
 
     def is_in_conference(self, timeout_ms: int = 15_000) -> bool:
@@ -131,17 +181,31 @@ class GuestJoinPage:
                 return True
 
             try:
-                join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
-                if join_btn.count() > 0 and join_btn.is_visible():
-                    join_btn.click(force=True)
-                    self.page.wait_for_timeout(2500)
+                self.close_overlay_if_present()
             except Exception:
                 pass
+
+            try:
+                self.click_join()
+            except Exception:
+                pass
+
+            self.page.wait_for_timeout(1500)
 
             current_url = self.page.url or ""
             if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
                 return True
 
-            self.page.wait_for_timeout(1500)
+        return False
 
+    def close_overlay_if_present(self) -> bool:
+        for selector in self.OVERLAY_CLOSE_LOCATORS:
+            try:
+                locator = self.page.locator(selector).first
+                if locator.count() > 0 and locator.is_visible():
+                    locator.click(force=True)
+                    self.page.wait_for_timeout(500)
+                    return True
+            except Exception:
+                continue
         return False

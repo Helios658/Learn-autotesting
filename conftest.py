@@ -88,8 +88,9 @@ def driver(request, playwright_instance: Playwright):
 
     browser = browser_launcher.launch(**launch_kwargs)
     context = browser.new_context(
-        viewport={"width": 1920, "height": 1080},
+        viewport={"width": 1600, "height": 900},
         ignore_https_errors=True,
+        record_video_dir="artifacts/videos",
     )
 
     # ✅ START tracing всегда, сохраняем только при падении
