@@ -108,10 +108,21 @@ class LegacyEventPage(BasePage):
         return True
 
     def open_tickets_modal(self):
-        self.page.locator(self.CREATE_TICKETS_LINK).first.wait_for(
-            state="visible", timeout=config.EXPLICIT_WAIT * 1000
-        )
-        self.safe_click(self.CREATE_TICKETS_LINK)
+        try:
+            ticket_link = self._find_first_visible(
+                [self.CREATE_TICKETS_LINK],
+                timeout=config.EXPLICIT_WAIT * 1000,
+            )
+        except Exception:
+            # В legacy-форме открытия мероприятия кнопка "Билеты" может появляться
+            # с задержкой, если диалог создания не успел открыться с первого клика.
+            self.open_create_event()
+            ticket_link = self._find_first_visible(
+                [self.CREATE_TICKETS_LINK],
+                timeout=config.EXPLICIT_WAIT * 1000,
+            )
+
+        self.safe_click(ticket_link)
         return self
 
     def generate_ticket_link(self):
