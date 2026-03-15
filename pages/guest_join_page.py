@@ -186,7 +186,17 @@ class GuestJoinPage:
                 pass
 
             try:
+                self.click_join_after_mail_link()
+            except Exception:
+                pass
+
+            try:
                 self.click_join()
+            except Exception:
+                pass
+
+            try:
+                self.click_already_have_account()
             except Exception:
                 pass
 
