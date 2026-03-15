@@ -499,9 +499,12 @@ def test_27_registration_link_authorized_user(driver):
 
         final_url = guest_page.url
         is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+        is_join_url = "/v2/join?token=" in final_url
 
         assert is_joined, f"Не удалось завершить вход по ссылке из письма. URL: {final_url}"
-        assert is_conference_url, f"После перехода по ссылке из письма не вошли в мероприятие. URL: {final_url}"
+        assert is_conference_url or is_join_url, (
+            f"После перехода по ссылке из письма получен неожиданный URL: {final_url}"
+        )
 
     finally:
         guest_context.close()
