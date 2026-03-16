@@ -177,37 +177,19 @@ class GuestJoinPage:
 
         while time.time() < deadline:
             current_url = self.page.url or ""
-            is_conference_url = "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url
-            is_join_url = "/v2/join?token=" in current_url
-            if is_conference_url or is_join_url:
+            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
                 return True
-
             try:
                 self.close_overlay_if_present()
             except Exception:
                 pass
-
-            try:
-                self.click_join_after_mail_link()
-            except Exception:
-                pass
-
             try:
                 self.click_join()
             except Exception:
                 pass
-
-            try:
-                self.click_already_have_account()
-            except Exception:
-                pass
-
             self.page.wait_for_timeout(1500)
-
             current_url = self.page.url or ""
-            is_conference_url = "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url
-            is_join_url = "/v2/join?token=" in current_url
-            if is_conference_url or is_join_url:
+            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
                 return True
 
         return False
