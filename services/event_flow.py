@@ -53,6 +53,19 @@ class EventFlow:
         scroller = self.driver.locator(self.EVENT_LIST_SCROLLER).first
         scroller.wait_for(state="visible", timeout=15000)
 
+        targeted_locators = [
+            self.driver.locator(f"{self.EVENT_CARDS}:has(a[href*='{target_event_id}'])").first,
+            self.driver.locator(f"xpath=//{self.EVENT_CARDS}[.//*[contains(@href, '{target_event_id}')]]").first,
+        ]
+        for locator in targeted_locators:
+            try:
+                if locator.count() > 0 and locator.is_visible():
+                    self.event_page.safe_click(locator, timeout=2000)
+                    if target_event_id in (self.driver.url or ""):
+                        return locator
+            except Exception:
+                continue
+
         max_scroll_steps = 120
         no_progress_steps = 0
 
@@ -61,16 +74,26 @@ class EventFlow:
             visible_count = cards.count()
 
             for idx in range(visible_count):
+                cards = self.driver.locator(self.EVENT_CARDS)
+                if idx >= cards.count():
+                    break
                 card = cards.nth(idx)
+
                 try:
-                    card.scroll_into_view_if_needed(timeout=2000)
+                    if not card.is_visible():
+                        continue
+                except Exception:
+                    continue
+
+                try:
+                    card.scroll_into_view_if_needed(timeout=1200)
                 except Exception:
                     pass
 
                 try:
-                    card.click(timeout=2000)
+                    self.event_page.safe_click(card, timeout=1500)
                 except Exception:
-                    card.click(force=True)
+                    continue
 
                 if target_event_id in (self.driver.url or ""):
                     return card
@@ -79,7 +102,7 @@ class EventFlow:
             scroller.evaluate(
                 "el => el.scrollBy(0, Math.max(Math.floor(el.clientHeight * 0.85), 700))"
             )
-            self.driver.wait_for_timeout(350)
+            self.driver.wait_for_timeout(300)
             new_top = scroller.evaluate("el => el.scrollTop")
 
             if new_top <= prev_top + 1:

@@ -1,6 +1,7 @@
 import re
 import time
 from playwright.sync_api import Error as PlaywrightError
+from utils.ui_interruptions import close_meeting_start_popup_if_present
 
 
 class GuestJoinPage:
@@ -56,6 +57,10 @@ class GuestJoinPage:
     def _find_visible(self, selectors, timeout_ms: int = 10_000):
         deadline = time.time() + timeout_ms / 1000
         while time.time() < deadline:
+            try:
+                close_meeting_start_popup_if_present(self.page)
+            except Exception:
+                pass
             for selector in selectors:
                 try:
                     locator = self.page.locator(selector)
@@ -80,6 +85,10 @@ class GuestJoinPage:
         field.fill(name)
 
     def click_join(self) -> None:
+        try:
+            close_meeting_start_popup_if_present(self.page)
+        except Exception:
+            pass
         join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
         join_btn.wait_for(state="visible", timeout=12000)
 
@@ -120,7 +129,37 @@ class GuestJoinPage:
         raise AssertionError("Не удалось нажать кнопку auth-info__join-button")
 
     def join(self, name: str) -> None:
-        self.enter_guest_name(name)
+        try:
+            close_meeting_start_popup_if_present(self.page)
+        except Exception:
+            pass
+
+        # Если после перехода по ссылке пользователь уже попал в конференцию,
+        # дополнительных действий не требуется.
+        if self.is_in_conference(timeout_ms=3000):
+            return
+
+        for attempt in range(2):
+            try:
+                self.enter_guest_name(name)
+                break
+            except AssertionError:
+                if self.is_in_conference(timeout_ms=2000):
+                    return
+
+                # На части ticket-лендингов поле имени не показывается сразу,
+                # но доступна кнопка продолжения/входа.
+                try:
+                    self.click_join_after_mail_link()
+                    if self.is_in_conference(timeout_ms=3000):
+                        return
+                except Exception:
+                    pass
+
+                if attempt == 0:
+                    self.page.reload(wait_until="domcontentloaded")
+                    continue
+                raise
 
         deadline = time.time() + 8
         join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first

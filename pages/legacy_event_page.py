@@ -10,8 +10,12 @@ class LegacyEventPage(BasePage):
     OPEN_MAIN_MENU = "[e2e-id='shared-core.navigation-menu.self-actions-popover']"
     SWITCH_TO_LEGACY_BTN = "[e2e-id='profile-action__navigate-to-old-interface']"
     CREATE_EVENT_BTN = "[imarker='planConferenceButton']"
-
     CREATE_TICKETS_LINK = "[imarker='ticketsLink']"
+    CREATE_TICKETS_LINK_LOCATORS = [
+        "[imarker='ticketsLink']",
+        "xpath=//*[@imarker='ticketsLink']",
+        "xpath=//*[contains(@class,'ivcs-tab') or self::a or self::button][contains(normalize-space(.), 'Билет') or contains(normalize-space(.), 'Ticket')]",
+    ]
     TICKET_GENERATE = "[imarker='generateButton']"
     CHECK_BOX_TICKET_LINK = "[imarker='checkBox']"
     COPY_TICKET_LINK_BTN = "[imarker='copyButton']"
@@ -94,7 +98,16 @@ class LegacyEventPage(BasePage):
         self.page.locator(self.CREATE_EVENT_BTN).first.wait_for(
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
-        self.safe_click(self.CREATE_EVENT_BTN)
+        for _ in range(2):
+            self.safe_click(self.CREATE_EVENT_BTN)
+            try:
+                self._find_first_visible(self.CREATE_TICKETS_LINK_LOCATORS, timeout=5000)
+                return self
+            except Exception:
+                # После переключения в legacy всплывающие окна могут появляться с задержкой
+                # и перекрывать кнопку создания мероприятия.
+                self.close_post_switch_popups()
+                self.page.wait_for_timeout(300)
         return self
 
     def _click_first_visible(self, selectors, timeout_ms: int = 5000, required: bool = True):
@@ -108,24 +121,35 @@ class LegacyEventPage(BasePage):
         return True
 
     def open_tickets_modal(self):
-        self.page.locator(self.CREATE_TICKETS_LINK).first.wait_for(
-            state="visible", timeout=config.EXPLICIT_WAIT * 1000
-        )
-        self.safe_click(self.CREATE_TICKETS_LINK)
-        return self
+        for attempt in range(3):
+            try:
+                ticket_link = self._find_first_visible(
+                    self.CREATE_TICKETS_LINK_LOCATORS,
+                    timeout=config.EXPLICIT_WAIT * 1000,
+                )
+            except Exception:
+                # Диалог создания мог не открыться/закрыться из-за асинхронного legacy UI.
+                self.open_create_event()
+                if attempt < 2:
+                    continue
+                raise
+
+            self.safe_click(ticket_link)
+            if self._ensure_tickets_modal_opened():
+                return self
+
+            # Если клик не открыл модалку, пробуем переоткрыть форму и кликнуть снова.
+            self.open_create_event()
+            self.page.wait_for_timeout(400)
+
+        raise AssertionError("Не удалось открыть модальное окно билетов: кнопка generateButton не появилась")
 
     def generate_ticket_link(self):
-        self.page.locator(self.TICKET_GENERATE).first.wait_for(
-            state="visible", timeout=config.EXPLICIT_WAIT * 1000
-        )
-        self.safe_click(self.TICKET_GENERATE)
+        self._click_first_visible([self.TICKET_GENERATE], timeout_ms=config.EXPLICIT_WAIT * 1000)
         return self
 
     def check_box_ticket_link(self):
-        self.page.locator(self.CHECK_BOX_TICKET_LINK).first.wait_for(
-            state="visible", timeout=config.EXPLICIT_WAIT * 1000
-        )
-        self.safe_click(self.CHECK_BOX_TICKET_LINK)
+        self._click_first_visible([self.CHECK_BOX_TICKET_LINK], timeout_ms=config.EXPLICIT_WAIT * 1000)
         return self
 
     def copy_ticket_link(self) -> str:
@@ -255,6 +279,13 @@ class LegacyEventPage(BasePage):
         self._click_first_visible(self.CREATE_LEGACY_EVENT_LOCATORS, timeout_ms=config.EXPLICIT_WAIT * 1000)
         self.page.wait_for_load_state("domcontentloaded")
         return self
+
+    def _ensure_tickets_modal_opened(self):
+        try:
+            self._find_first_visible([self.TICKET_GENERATE], timeout=5000)
+            return True
+        except Exception:
+            return False
 
     def create_event_with_single_ticket(self):
         """Полный сценарий в старом вебе: открыть создание, сгенерировать ticket, скопировать и создать."""

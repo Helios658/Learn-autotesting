@@ -1,6 +1,7 @@
 import time
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from utils.ui_interruptions import close_meeting_start_popup_if_present
 
 
 class BasePage:
@@ -10,6 +11,10 @@ class BasePage:
     def _find_first_visible(self, selectors, timeout=3000):
         deadline = time.time() + timeout / 1000
         while time.time() < deadline:
+            try:
+                close_meeting_start_popup_if_present(self.page)
+            except Exception:
+                pass
             for selector in selectors:
                 try:
                     locator = self.page.locator(selector)
@@ -34,8 +39,13 @@ class BasePage:
 
     def safe_click(self, selector, timeout=5000):
         """
-        Универсальный клик: scroll -> click -> force -> js click
+        Универсальный клик: закрыть случайные pop-up -> scroll -> click -> force -> js click
         """
+        try:
+            close_meeting_start_popup_if_present(self.page)
+        except Exception:
+            pass
+
         locator = selector if hasattr(selector, "click") else self.page.locator(selector)
 
         try:
@@ -47,7 +57,10 @@ class BasePage:
             locator.first.click(timeout=timeout)
             return
         except (PlaywrightTimeoutError, PlaywrightError):
-            pass
+            try:
+                close_meeting_start_popup_if_present(self.page)
+            except Exception:
+                pass
 
         try:
             locator.first.click(force=True, timeout=2000)
