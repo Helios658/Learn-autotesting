@@ -89,6 +89,7 @@ class GuestJoinPage:
             close_meeting_start_popup_if_present(self.page)
         except Exception:
             pass
+
         join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
         join_btn.wait_for(state="visible", timeout=12000)
 
@@ -216,7 +217,7 @@ class GuestJoinPage:
 
         while time.time() < deadline:
             current_url = self.page.url or ""
-            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
+            if self._is_join_result_url(current_url):
                 return True
             try:
                 self.close_overlay_if_present()
@@ -228,7 +229,7 @@ class GuestJoinPage:
                 pass
             self.page.wait_for_timeout(1500)
             current_url = self.page.url or ""
-            if "/v2/iva/home/conferences" in current_url and "conferenceSessionId=" in current_url:
+            if self._is_join_result_url(current_url):
                 return True
 
         return False
@@ -244,3 +245,10 @@ class GuestJoinPage:
             except Exception:
                 continue
         return False
+
+    def _is_join_result_url(self, url: str) -> bool:
+        if not url:
+            return False
+        is_conference_url = "/v2/iva/home/conferences" in url and "conferenceSessionId=" in url
+        is_join_token_url = "/v2/join?token=" in url
+        return is_conference_url or is_join_token_url
