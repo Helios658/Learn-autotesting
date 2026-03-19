@@ -87,11 +87,19 @@ def driver(request, playwright_instance: Playwright):
         launch_kwargs["args"] = ["--ignore-certificate-errors", "--allow-insecure-localhost"]
 
     browser = browser_launcher.launch(**launch_kwargs)
-    context = browser.new_context(
-        viewport={"width": 1600, "height": 900},
-        ignore_https_errors=True,
-        record_video_dir="artifacts/videos",
-    )
+    context_kwargs = {
+        "viewport": {"width": 1600, "height": 900},
+        "ignore_https_errors": True,
+        "record_video_dir": "artifacts/videos",
+    }
+
+    if config.TEST_2FA_USER_EMAIL:
+        context_kwargs["http_credentials"] = {
+            "username": config.TEST_2FA_USER_EMAIL,
+            "password": config.TEST_2FA_USER_PASSWORD,
+        }
+
+    context = browser.new_context(**context_kwargs)
 
     # ✅ START tracing всегда, сохраняем только при падении
     context.tracing.start(screenshots=True, snapshots=True, sources=True)

@@ -2,6 +2,7 @@ import pytest
 from config import config
 from services.login_flow import LoginFlow
 from pages.login_page import LoginPage
+from pages.mail_page import MailPage
 
 
 @pytest.mark.smoke
@@ -48,3 +49,15 @@ def test_13_adfs_login(login_page):
     assert login_page.wait_for_successful_login(timeout=config.EXPLICIT_WAIT * 2), (
         f"ADFS логин неуспешен, текущий URL: {login_page.page.url}"
     )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("28")
+def test_28_2fa_login(driver):
+    flow = LoginFlow(driver)
+    result = LoginFlow(driver).login_with_2fa(
+        username=config.TEST_2FA_USER_EMAIL,
+        password=config.TEST_2FA_USER_PASSWORD,
+    )
+    assert result == 0
+

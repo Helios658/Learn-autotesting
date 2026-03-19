@@ -44,6 +44,8 @@ class LoginPage(BasePage):
             "input[type='submit']",
             "#idSIButton9",
         ]
+        self.CODE_INPUT_2FA = "input[placeholder='Код подтверждения']"
+        self.LOGIN_BUTTON_2FA = "button[iva-color='primary'][iva-size='m']:has-text('Войти')"
         self._response_statuses = []
         self._response_listener_registered = False
 
@@ -111,10 +113,13 @@ class LoginPage(BasePage):
 
         raise PlaywrightTimeoutError(f"Не удалось найти элемент по локаторам: {selectors}")
 
-    def open(self):
+    def open(self, url=None):
         self._ensure_response_tracking()
         self._response_statuses.clear()
-        self.page.goto(self.URL, wait_until="domcontentloaded")
+
+        target_url = url or self.URL
+        self.page.goto(target_url, wait_until="domcontentloaded")
+
         timeout_ms = config.EXPLICIT_WAIT * 1000
         self.page.locator(self.USERNAME_INPUT).first.wait_for(state="visible", timeout=timeout_ms)
         return self
@@ -397,3 +402,27 @@ class LoginPage(BasePage):
 
             self.page.wait_for_timeout(250)
         return False
+
+    def wait_for_2fa_step(self, timeout=None):
+        timeout = timeout or config.EXPLICIT_WAIT
+        timeout_ms = timeout * 1000
+
+        code_input = self.page.locator(self.CODE_INPUT_2FA).first
+        login_button_2fa = self.page.locator(self.LOGIN_BUTTON_2FA).first
+
+        code_input.wait_for(state="visible", timeout=timeout_ms)
+        login_button_2fa.wait_for(state="visible", timeout=timeout_ms)
+        return self
+
+    def enter_2fa_code(self, code: str):
+        self.page.locator(self.CODE_INPUT_2FA).first.fill(code)
+        return self
+
+    def click_login_button_2fa(self):
+        self.page.locator(self.LOGIN_BUTTON_2FA).first.click()
+        return self
+
+    def submit_2fa_code(self, code: str):
+        self.enter_2fa_code(code)
+        self.click_login_button_2fa()
+        return self

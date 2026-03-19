@@ -661,7 +661,6 @@ class EventPage(BasePage):
 
         self.close_event_start_popup_if_present()
 
-        # 2 попытка
         button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         button.click(force=True)
         self.page.wait_for_timeout(700)

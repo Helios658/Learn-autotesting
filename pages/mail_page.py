@@ -22,6 +22,12 @@ class InvitationEmailNotReceivedError(MailPageError):
 class InvitationLinkNotFoundError(MailPageError):
     """Ссылка приглашения на мероприятие не найдена в письме."""
 
+class Code2FAEmailNotReceivedError(MailPageError):
+    """Письмо с кодом 2FA не было получено вовремя."""
+
+class Code2FANotFoundError(MailPageError):
+    """Код 2FA не найден в письме."""
+
 class MailPage:
     JOIN_LINK_STRICT_PATTERN = (
         r"https?://[^\s<>\"']+#join:[a-zA-Z]"
@@ -35,6 +41,7 @@ class MailPage:
         self.SIGNIN_BUTTON = ".signinTxt"
         self.EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Восстановление пароля')]"
         self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
+        self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
 
     def _extract_reset_link_from_text(self, text):
         if not text:
@@ -187,6 +194,25 @@ class MailPage:
 
         return None
 
+    def _extract_code_from_text(self, text):
+        if not text:
+            return None
+
+        variants = [text, unescape(text), unquote(unescape(text))]
+        patterns = [
+            r"Код подтверждения входа:\s*(\d{4,8})",
+            r"Код подтверждения:\s*(\d{4,8})",
+            r"код\s+подтверждения[\s:]+(\d{4,8})",
+        ]
+
+        for variant in variants:
+            for pattern in patterns:
+                match = re.search(pattern, variant, flags=re.IGNORECASE)
+                if match:
+                    return match.group(1)
+
+        return None
+
     def login(self, username=None, password=None):
         username = username or config.MAIL_USERNAME
         password = password or config.MAIL_PASSWORD
@@ -268,3 +294,70 @@ class MailPage:
             self.page.wait_for_timeout(500)
 
         raise InvitationLinkNotFoundError("Не нашли ссылку приглашения в уже открытом письме")
+
+    def _extract_2fa_code_from_page_or_frames(self):
+        code = self._extract_code_from_text(self.page.content())
+        if code:
+            return code
+
+        visible_text = self.page.locator("body").inner_text(timeout=2000)
+        code = self._extract_code_from_text(visible_text)
+        if code:
+            return code
+
+        for frame in self.page.frames:
+            try:
+                code = self._extract_code_from_text(frame.content())
+                if code:
+                    return code
+            except Exception:
+                pass
+
+            try:
+                frame_text = frame.locator("body").inner_text(timeout=2000)
+                code = self._extract_code_from_text(frame_text)
+                if code:
+                    return code
+            except Exception:
+                pass
+
+        return None
+
+    def wait_for_2fa_code_email(self, timeout=60):
+        print(f"⏳ Ждем письмо (макс {timeout} сек)...")
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.page.reload(wait_until="domcontentloaded")
+            if self.page.locator(self.CODE_2FA_EMAIL_SUBJECT).count() > 0:
+                print("✅ Письмо найдено!")
+                return True
+            self.page.wait_for_timeout(2000)
+
+        print(f"❌ Письмо не пришло за {timeout} секунд")
+        return False
+
+    def open_2fa_email(self, wait_for_email=True):
+        if wait_for_email and not self.wait_for_2fa_code_email():
+            raise Code2FAEmailNotReceivedError("Письмо с кодом не пришло")
+
+        subject = self.page.locator(self.CODE_2FA_EMAIL_SUBJECT).first
+        subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        subject.click()
+        self.page.wait_for_timeout(1500)
+        return self
+
+    def get_2fa_code_from_email(self, wait_for_email=True):
+        if wait_for_email:
+            self.open_2fa_email(wait_for_email=True)
+
+        deadline = time.time() + config.EXPLICIT_WAIT
+
+        while time.time() < deadline:
+            code_2fa = self._extract_2fa_code_from_page_or_frames()
+            if code_2fa:
+                print("✅ Код 2FA найден в письме")
+                return code_2fa
+
+            self.page.wait_for_timeout(500)
+
+        raise Code2FANotFoundError("Код 2FA не найден в письме")

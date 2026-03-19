@@ -43,6 +43,7 @@ class Config:
 
     # ========== Базовые настройки ==========
     BASE_URL = os.getenv('TEST_BASE_URL', 'https://gamma.hi-tech.org')
+    BASE_2FA_URL = os.getenv('TEST_2FA_URL', 'https://gamma-2fa.hi-tech.org')
     IMPLICIT_WAIT = int(os.getenv('IMPLICIT_WAIT', '5'))
     EXPLICIT_WAIT = int(os.getenv('EXPLICIT_WAIT', '10'))
 
@@ -76,6 +77,10 @@ class Config:
     TEST_USER2_EMAIL = os.getenv('TEST_USER2_EMAIL')
     TEST_USER2_PASSWORD = os.getenv('TEST_USER2_PASSWORD')
 
+    #USER_2FA
+    TEST_2FA_USER_EMAIL = os.getenv('TEST_2FA_USER_EMAIL')
+    TEST_2FA_USER_PASSWORD = os.getenv('TEST_2FA_USER_PASSWORD')
+
     # ========== Настройки запуска ==========
     HEADLESS_MODE = os.getenv('HEADLESS_MODE', 'False').lower() == 'true'
     BROWSER = os.getenv('BROWSER', 'chrome')
@@ -89,6 +94,9 @@ class Config:
     def MAIL_URL(self):
         return "https://mail.hi-tech.org"
 
+    @property
+    def LOGIN_2FA_URL(self):
+        return f"{self.BASE_2FA_URL}/v2/login"
 
 # Создаем экземпляр конфигурации
 config = Config()
