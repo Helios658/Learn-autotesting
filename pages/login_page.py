@@ -49,7 +49,11 @@ class LoginPage(BasePage):
             "input[placeholder='Код подтверждения']",
             "input[placeholder='Confirmation code']",
         ]
-        self.LOGIN_BUTTON_2FA = "button[iva-color='primary'][iva-size='m']:has-text('Войти')"
+
+        self.LOGIN_BUTTON_2FA_LOCATORS = [
+            "button[iva-color='primary'][iva-size='m']:has-text('Войти')",
+            "button[iva-color='primary'][iva-size='m']:has-text('Log in')",
+        ]
         self._response_statuses = []
         self._response_listener_registered = False
 
@@ -407,23 +411,44 @@ class LoginPage(BasePage):
             self.page.wait_for_timeout(250)
         return False
 
+    def _find_first_visible_2fa_element(self, selectors, timeout_ms):
+        last_error = None
+
+        for selector in selectors:
+            try:
+                element = self.page.locator(selector).first
+                element.wait_for(state="visible", timeout=timeout_ms)
+                return element
+            except (PlaywrightError, PlaywrightTimeoutError) as e:
+                last_error = e
+                continue
+
+        raise PlaywrightTimeoutError(
+            f"Не удалось найти видимый элемент ни по одному из локаторов: {selectors}"
+        ) from last_error
+
     def wait_for_2fa_step(self, timeout=None):
         timeout = timeout or config.EXPLICIT_WAIT
         timeout_ms = timeout * 1000
 
-        code_input = self.page.locator(self.CODE_INPUT_2FA).first
-        login_button_2fa = self.page.locator(self.LOGIN_BUTTON_2FA).first
-
-        code_input.wait_for(state="visible", timeout=timeout_ms)
-        login_button_2fa.wait_for(state="visible", timeout=timeout_ms)
+        self._find_first_visible_2fa_element(self.CODE_INPUT_2FA_LOCATORS, timeout_ms)
+        self._find_first_visible_2fa_element(self.LOGIN_BUTTON_2FA_LOCATORS, timeout_ms)
         return self
 
     def enter_2fa_code(self, code: str):
-        self.page.locator(self.CODE_INPUT_2FA).first.fill(code)
+        code_input = self._find_first_visible_2fa_element(
+            self.CODE_INPUT_2FA_LOCATORS,
+            config.EXPLICIT_WAIT * 1000
+        )
+        code_input.fill(code)
         return self
 
     def click_login_button_2fa(self):
-        self.page.locator(self.LOGIN_BUTTON_2FA).first.click()
+        login_button = self._find_first_visible_2fa_element(
+            self.LOGIN_BUTTON_2FA_LOCATORS,
+            config.EXPLICIT_WAIT * 1000
+        )
+        login_button.click()
         return self
 
     def submit_2fa_code(self, code: str):
