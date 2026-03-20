@@ -54,16 +54,6 @@ class LoginFlow:
 
         # 2. Нажимаем логин и ждём шаг 2FA на этой же странице
         self.login_page.click_login_button()
-        self.driver.wait_for_timeout(3000)
-
-        print("URL после первого логина:", self.driver.url)
-        print("network_error после первого логина:", self.login_page.get_network_error())
-
-        if self.login_page.check_400_error(timeout=2):
-            raise AssertionError("После ввода логина/пароля появилась ошибка авторизации, а не шаг 2FA")
-
-        print(self.driver.content()[:5000])
-
         self.login_page.wait_for_2fa_step(timeout=timeout)
 
         # 3. Открываем почту в НОВОМ окне/вкладке

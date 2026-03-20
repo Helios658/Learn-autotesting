@@ -44,7 +44,11 @@ class LoginPage(BasePage):
             "input[type='submit']",
             "#idSIButton9",
         ]
-        self.CODE_INPUT_2FA = "input[placeholder='Код подтверждения']"
+
+        self.CODE_INPUT_2FA_LOCATORS = [
+            "input[placeholder='Код подтверждения']",
+            "input[placeholder='Confirmation code']",
+        ]
         self.LOGIN_BUTTON_2FA = "button[iva-color='primary'][iva-size='m']:has-text('Войти')"
         self._response_statuses = []
         self._response_listener_registered = False
