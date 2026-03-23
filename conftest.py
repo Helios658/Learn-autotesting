@@ -166,3 +166,41 @@ def test_user():
 def login_page(driver):
     from pages.login_page import LoginPage
     return LoginPage(driver)
+
+@pytest.fixture
+def two_users(request, playwright_instance: Playwright):
+    use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
+    resolved_browser, browser_launcher = _resolve_browser_launcher(playwright_instance)
+
+    launch_kwargs = {"headless": use_headless}
+    if resolved_browser == "chromium":
+        launch_kwargs["args"] = ["--ignore-certificate-errors", "--allow-insecure-localhost"]
+
+    browser = browser_launcher.launch(**launch_kwargs)
+
+    context_a = browser.new_context(
+        viewport={"width": 1600, "height": 900},
+        ignore_https_errors=True,
+        record_video_dir="artifacts/videos",
+    )
+
+    context_a1 = browser.new_context(
+        viewport={"width": 1600, "height": 900},
+        ignore_https_errors=True,
+        record_video_dir="artifacts/videos",
+    )
+
+    page_a = context_a.new_page()
+    page_a1 = context_a1.new_page()
+
+    yield {
+        "a": page_a,
+        "a1": page_a1,
+        "context_a": context_a,
+        "context_a1": context_a1,
+        "browser": browser,
+    }
+
+    context_a.close()
+    context_a1.close()
+    browser.close()

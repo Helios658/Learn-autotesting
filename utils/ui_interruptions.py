@@ -55,3 +55,22 @@ def close_meeting_start_popup_if_present(page) -> bool:
     # fallback: иногда видна только "Войти" (okButton). Не кликаем её специально,
     # чтобы не ломать текущий тестовый поток.
     return True
+
+def close_need_play_modal_if_present(page) -> bool:
+    selectors = [
+        "[e2e-id='need-play-modal__button']",
+        "button[e2e-id='need-play-modal__button']",
+        "button:has-text('OK')",
+    ]
+
+    for selector in selectors:
+        try:
+            btn = page.locator(selector).first
+            if btn.count() > 0 and btn.is_visible():
+                btn.click(force=True, timeout=1500)
+                page.wait_for_timeout(200)
+                return True
+        except Exception:
+            continue
+
+    return False

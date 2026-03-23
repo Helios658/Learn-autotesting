@@ -3,6 +3,7 @@ from config import config
 from services.login_flow import LoginFlow
 from pages.login_page import LoginPage
 from pages.mail_page import MailPage
+import uuid
 
 
 @pytest.mark.smoke
@@ -60,4 +61,14 @@ def test_28_2fa_login(driver):
         password=config.TEST_2FA_USER_PASSWORD,
     )
     assert result == 0
+
+def test_two_users_can_login(two_users):
+    page_a = two_users["a"]
+    page_a1 = two_users["a1"]
+
+    LoginFlow(page_a).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+    LoginFlow(page_a1).login(config.TEST_USER2_EMAIL, config.TEST_USER2_PASSWORD, expect_success=True)
+
+    assert "/chats" in page_a.url or "/home" in page_a.url
+    assert "/chats" in page_a1.url or "/home" in page_a1.url
 

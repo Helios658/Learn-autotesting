@@ -14,6 +14,15 @@ class ChatPage(BasePage):
 
     CONTACT_ROW = "app-chat-creation-contact"
     CHAT_HEADER = "app-chat-header"
+    CHATS_LIST = "app-chats-list-container"
+    CHAT_ROW_SELECTORS = [
+        "app-chat-item",
+        "[class*='chat-item']",
+        "[class*='chat-list-item']",
+    ]
+    MESSAGE_INPUT = "textarea.chat-message-list__textarea"
+    SEND_BUTTON = "button.chat-message-list__send-button"
+    MESSAGE_LIST = "app-chat-message-list"
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/chats", wait_until="domcontentloaded")
@@ -86,3 +95,76 @@ class ChatPage(BasePage):
             return True
         except Exception:
             return False
+
+    def focus_message_input(self):
+        input_locator = self.page.locator(self.MESSAGE_INPUT).first
+        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        input_locator.click()
+
+    def type_message(self, text: str):
+        input_locator = self.page.locator(self.MESSAGE_INPUT).first
+        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        input_locator.fill("")
+        input_locator.fill(text)
+
+    def click_send(self):
+        send_button = self.page.locator(self.SEND_BUTTON).first
+        send_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        # ждем, пока кнопка станет активной
+        self.page.wait_for_function(
+            """selector => {
+                const btn = document.querySelector(selector);
+                return !!btn && !btn.disabled;
+            }""",
+            self.SEND_BUTTON,
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
+
+        self.safe_click(send_button)
+
+    def send_message(self, text: str):
+        self.focus_message_input()
+        self.type_message(text)
+        self.click_send()
+
+    def wait_for_message(self, text: str, timeout_ms: int = 15000) -> bool:
+        try:
+            message_list = self.page.locator(self.MESSAGE_LIST).first
+            message_list.wait_for(state="visible", timeout=timeout_ms)
+            message_list.locator(f"text={text}").last.wait_for(state="visible", timeout=timeout_ms)
+            return True
+        except Exception:
+            return False
+
+    def open_existing_p2p_chat(self, user_text: str):
+        chats_list = self.page.locator(self.CHATS_LIST).first
+        chats_list.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        normalized_target = user_text.strip().lower()
+
+        for selector in self.CHAT_ROW_SELECTORS:
+            rows = chats_list.locator(selector)
+            count = rows.count()
+
+            for i in range(count):
+                row = rows.nth(i)
+                try:
+                    if not row.is_visible():
+                        continue
+
+                    text = row.inner_text().strip()
+                    normalized_text = text.lower()
+
+                    print(f"[chat row {i}] {text!r}")
+
+                    if normalized_target in normalized_text:
+                        self.safe_click(row)
+
+                        header = self.page.locator(self.CHAT_HEADER).first
+                        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+                        return
+                except Exception:
+                    continue
+
+        raise AssertionError(f"Не удалось открыть существующий чат с пользователем: {user_text}")
