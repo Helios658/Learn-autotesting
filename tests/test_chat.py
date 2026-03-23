@@ -21,7 +21,7 @@ def test_30_create_or_open_p2p_chat_with_test_user2(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("31")
-def test_31_send_and_receive_text_message(two_users):
+def test_31_send_and_receive_text_message_p2p(two_users):
     page_a = two_users["a"]
     page_a1 = two_users["a1"]
 
