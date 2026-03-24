@@ -151,6 +151,7 @@ class MailPage:
         1) из href / outerHTML;
         2) через открытие новой вкладки;
         3) через переход в этой же вкладке.
+        Проверяет как текущую страницу, так и iframe письма.
         Возвращает reset-link (str) или None.
         """
         link_locators = [
@@ -159,68 +160,75 @@ class MailPage:
             "a[href*='/v2/login/new-password']",
         ]
 
-        for selector in link_locators:
-            try:
-                links = self.page.locator(selector)
-                count = links.count()
-            except Exception:
-                continue
+        search_contexts = [self.page, *self.page.frames]
 
-            for idx in range(min(count, 10)):
-                link = links.nth(idx)
+        for context in search_contexts:
+            for selector in link_locators:
                 try:
-                    if not link.is_visible():
-                        continue
+                    links = context.locator(selector)
+                    count = links.count()
                 except Exception:
                     continue
 
-                # 1) Сначала пытаемся вытащить URL без клика (href / html)
-                try:
-                    href = link.get_attribute("href") or ""
-                    reset_link = self._extract_reset_link_from_text(href)
-                    if reset_link:
-                        return reset_link
-                except Exception:
-                    pass
-
-                try:
-                    outer_html = link.evaluate("el => el.outerHTML")
-                    reset_link = self._extract_reset_link_from_text(outer_html or "")
-                    if reset_link:
-                        return reset_link
-                except Exception:
-                    pass
-
-                # 2) Пытаемся кликнуть и поймать новую вкладку
-                try:
-                    with self.page.context.expect_page(timeout=3000) as page_info:
-                        link.click(force=True, timeout=2000)
-                    new_page = page_info.value
+                for idx in range(min(count, 10)):
+                    link = links.nth(idx)
                     try:
-                        new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                        if not link.is_visible():
+                            continue
+                    except Exception:
+                        continue
+
+                    # 1) Сначала пытаемся вытащить URL без клика (href / html)
+                    for href_expr in (
+                            "el => el.getAttribute('href') || ''",
+                            "el => el.href || ''",
+                    ):
+                        try:
+                            href = link.evaluate(href_expr) or ""
+                            reset_link = self._extract_reset_link_from_text(href)
+                            if reset_link:
+                                return reset_link
+                        except Exception:
+                            pass
+
+                    try:
+                        outer_html = link.evaluate("el => el.outerHTML")
+                        reset_link = self._extract_reset_link_from_text(outer_html or "")
+                        if reset_link:
+                            return reset_link
                     except Exception:
                         pass
 
-                    popup_url = new_page.url or ""
-                    reset_link = self._extract_reset_link_from_text(popup_url)
-                    if reset_link:
-                        return reset_link
-                except Exception:
-                    pass
+                    # 2) Пытаемся кликнуть и поймать новую вкладку
+                    try:
+                        with self.page.context.expect_page(timeout=3000) as page_info:
+                            link.click(force=True, timeout=2000)
+                        new_page = page_info.value
+                        try:
+                            new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                        except Exception:
+                            pass
 
-                # 3) Переход в текущей вкладке
-                try:
-                    before_url = self.page.url
-                    link.click(force=True, timeout=2000)
-                    self.page.wait_for_timeout(800)
-                    after_url = self.page.url
-
-                    if after_url and after_url != before_url:
-                        reset_link = self._extract_reset_link_from_text(after_url)
+                        popup_url = new_page.url or ""
+                        reset_link = self._extract_reset_link_from_text(popup_url)
                         if reset_link:
                             return reset_link
-                except Exception:
-                    continue
+                    except Exception:
+                        pass
+
+                    # 3) Переход в текущей вкладке
+                    try:
+                        before_url = self.page.url
+                        link.click(force=True, timeout=2000)
+                        self.page.wait_for_timeout(800)
+                        after_url = self.page.url
+
+                        if after_url and after_url != before_url:
+                            reset_link = self._extract_reset_link_from_text(after_url)
+                            if reset_link:
+                                return reset_link
+                    except Exception:
+                        continue
 
         return None
 
