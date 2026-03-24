@@ -15,8 +15,10 @@ def test_30_create_or_open_p2p_chat_with_test_user2(driver):
     chat_page.open()
     chat_page.create_or_open_p2p_chat(config.TEST_USER2_EMAIL)
 
-    assert chat_page.is_p2p_chat_opened(config.TEST_USER2_EMAIL), \
+    assert chat_page.is_p2p_chat_opened(config.TEST_USER2_EMAIL), (
         "P2P чат с TEST_USER2 не открылся"
+    )
+
 
 @pytest.mark.smoke
 @pytest.mark.buildtest
@@ -34,15 +36,21 @@ def test_31_send_and_receive_text_message_p2p(two_users):
     chat_a1 = ChatPage(page_a1)
 
     chat_a.open()
-    chat_a.open_existing_p2p_chat(config.TEST_USER2_EMAIL)
-    chat_a.send_message(message_text)
+    chat_a.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    with page_a.expect_response("**/send-message") as response_info:
+        chat_a.send_message(message_text)
+
+    response = response_info.value
+    assert response.ok, "Запрос send-message завершился неуспешно"
+
+    payload = response.json()
+    assert payload["message"] == message_text, (
+        f"В send-message вернулся не тот текст: {payload}"
+    )
 
     chat_a1.open()
-    chat_a1.open_existing_p2p_chat("Кот Админ")
-
-    assert chat_a1.wait_for_message(message_text), (
-        f"A1 не получил сообщение: {message_text}"
-    )
+    chat_a1.open_existing_p2p_chat_via_search("Кот Админ")
 
     assert chat_a1.wait_for_message(message_text), (
         f"A1 не получил сообщение: {message_text}"

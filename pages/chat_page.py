@@ -3,26 +3,34 @@ from pages.base_page import BasePage
 
 
 class ChatPage(BasePage):
+    # Навигация
     OPEN_CHATS_TAB = "[e2e-id='shared-core.navigation-menu.chats']"
-    CLICK_CREATE_CHAT = "button.iva-round-button[iva-size='s'][iva-color='primary']"
-    SEARCH_USER = "input.search-input"
 
+    # Создание / открытие p2p через "+"
+    CLICK_CREATE_CHAT = "button.iva-round-button[iva-size='s'][iva-color='primary']"
     CREATE_CHAT_CONTAINER_LOCATORS = [
         "app-chat-creation",
         "[class*='chat-creation']",
     ]
+    CREATE_CHAT_CONTACT = "app-chat-creation-contact"
+    CREATE_CHAT_SEARCH_INPUT = "input.search-input"
 
-    CONTACT_ROW = "app-chat-creation-contact"
+    # Поиск по списку чатов слева
+    CHAT_SEARCH_BUTTON = "[e2e-id='contacts-header__search-btn']"
+    CHAT_SEARCH_INPUT = "input.search-input[placeholder='Поиск чатов']"
+
+    # Список чатов
+    CHAT_LIST_ITEM = "app-chats-list-item"
+    CHAT_CARD = "div.chat-card"
+    CHAT_CARD_TITLE = "h3.chat-card__title"
+
+    # Открытый чат справа
     CHAT_HEADER = "app-chat-header"
-    CHATS_LIST = "app-chats-list-container"
-    CHAT_ROW_SELECTORS = [
-        "app-chat-item",
-        "[class*='chat-item']",
-        "[class*='chat-list-item']",
-    ]
+    MESSAGE_LIST = "app-chat-message-list"
+
+    # Поле ввода и отправка
     MESSAGE_INPUT = "textarea.chat-message-list__textarea"
     SEND_BUTTON = "button.chat-message-list__send-button"
-    MESSAGE_LIST = "app-chat-message-list"
 
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/chats", wait_until="domcontentloaded")
@@ -30,6 +38,9 @@ class ChatPage(BasePage):
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
 
+    # =========================
+    # Создание / открытие p2p через "+"
+    # =========================
     def click_create_chat(self):
         self.safe_click(self.CLICK_CREATE_CHAT)
         self.get_create_chat_container()
@@ -44,17 +55,17 @@ class ChatPage(BasePage):
                 continue
         raise AssertionError("Не найден контейнер экрана создания чата")
 
-    def search_user(self, value: str):
+    def search_user_for_new_chat(self, value: str):
         container = self.get_create_chat_container()
-        search_input = container.locator(self.SEARCH_USER).first
+        search_input = container.locator(self.CREATE_CHAT_SEARCH_INPUT).first
         search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         search_input.fill("")
         search_input.fill(value)
         self.page.wait_for_timeout(700)
 
-    def select_user_from_results(self, user_text: str):
+    def select_user_from_new_chat_results(self, user_text: str):
         container = self.get_create_chat_container()
-        rows = container.locator(self.CONTACT_ROW)
+        rows = container.locator(self.CREATE_CHAT_CONTACT)
 
         rows.first.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         count = rows.count()
@@ -69,33 +80,73 @@ class ChatPage(BasePage):
                 text = row.inner_text().strip()
                 lines = [line.strip().lower() for line in text.splitlines() if line.strip()]
 
-                print(f"[search result {i}] {text!r}")
+                print(f"[new chat result {i}] {text!r}")
 
-                if normalized_target in lines:
+                if normalized_target in lines or normalized_target in text.lower():
                     self.safe_click(row)
                     return
 
             except Exception:
                 continue
 
-        raise AssertionError(f"Не найден нужный пользователь в результатах поиска: {user_text}")
+        raise AssertionError(f"Не найден пользователь в результатах создания чата: {user_text}")
 
     def create_or_open_p2p_chat(self, user_text: str):
         self.click_create_chat()
-        self.search_user(user_text)
-        self.select_user_from_results(user_text)
+        self.search_user_for_new_chat(user_text)
+        self.select_user_from_new_chat_results(user_text)
 
+        header = self.page.locator(self.CHAT_HEADER).first
+        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+    # =========================
+    # Открытие существующего чата через поиск по списку
+    # =========================
+    def open_existing_p2p_chat_via_search(self, user_text: str):
+        self.safe_click(self.CHAT_SEARCH_BUTTON)
+
+        search_input = self.page.locator(self.CHAT_SEARCH_INPUT).first
+        search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        search_input.fill("")
+        search_input.fill(user_text)
+        self.page.wait_for_timeout(700)
+
+        row = self.page.locator(self.CHAT_LIST_ITEM).filter(
+            has=self.page.locator(f"mark.highlighted:has-text('{user_text}')")
+        ).first
+
+        try:
+            row.wait_for(state="visible", timeout=3000)
+        except Exception:
+            row = self.page.locator(self.CHAT_LIST_ITEM).filter(
+                has=self.page.locator(f"{self.CHAT_CARD_TITLE}:has-text('{user_text}')")
+            ).first
+            row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        card = row.locator(self.CHAT_CARD).first
+        card.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(card)
+
+        header = self.page.locator(self.CHAT_HEADER).first
+        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+    # =========================
+    # Проверка открытого p2p чата
+    # =========================
     def is_p2p_chat_opened(self, user_text: str) -> bool:
         try:
             header = self.page.locator(self.CHAT_HEADER).first
             header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-
-            user_locator = header.locator(f"text={user_text}").first
-            user_locator.wait_for(state="visible", timeout=5000)
+            header.get_by_text(user_text, exact=True).first.wait_for(
+                state="visible", timeout=5000
+            )
             return True
         except Exception:
             return False
 
+    # =========================
+    # Сообщения
+    # =========================
     def focus_message_input(self):
         input_locator = self.page.locator(self.MESSAGE_INPUT).first
         input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -111,17 +162,17 @@ class ChatPage(BasePage):
         send_button = self.page.locator(self.SEND_BUTTON).first
         send_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
 
-        # ждем, пока кнопка станет активной
-        self.page.wait_for_function(
-            """selector => {
-                const btn = document.querySelector(selector);
-                return !!btn && !btn.disabled;
-            }""",
-            self.SEND_BUTTON,
-            timeout=config.EXPLICIT_WAIT * 1000,
-        )
+        for _ in range(20):
+            try:
+                if send_button.is_enabled():
+                    self.safe_click(send_button)
+                    return
+            except Exception:
+                pass
 
-        self.safe_click(send_button)
+            self.page.wait_for_timeout(200)
+
+        raise AssertionError("Кнопка отправки сообщения не стала активной")
 
     def send_message(self, text: str):
         self.focus_message_input()
@@ -132,39 +183,10 @@ class ChatPage(BasePage):
         try:
             message_list = self.page.locator(self.MESSAGE_LIST).first
             message_list.wait_for(state="visible", timeout=timeout_ms)
-            message_list.locator(f"text={text}").last.wait_for(state="visible", timeout=timeout_ms)
+            message_list.get_by_text(text, exact=True).last.wait_for(
+                state="visible",
+                timeout=timeout_ms,
+            )
             return True
         except Exception:
             return False
-
-    def open_existing_p2p_chat(self, user_text: str):
-        chats_list = self.page.locator(self.CHATS_LIST).first
-        chats_list.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-
-        normalized_target = user_text.strip().lower()
-
-        for selector in self.CHAT_ROW_SELECTORS:
-            rows = chats_list.locator(selector)
-            count = rows.count()
-
-            for i in range(count):
-                row = rows.nth(i)
-                try:
-                    if not row.is_visible():
-                        continue
-
-                    text = row.inner_text().strip()
-                    normalized_text = text.lower()
-
-                    print(f"[chat row {i}] {text!r}")
-
-                    if normalized_target in normalized_text:
-                        self.safe_click(row)
-
-                        header = self.page.locator(self.CHAT_HEADER).first
-                        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-                        return
-                except Exception:
-                    continue
-
-        raise AssertionError(f"Не удалось открыть существующий чат с пользователем: {user_text}")
