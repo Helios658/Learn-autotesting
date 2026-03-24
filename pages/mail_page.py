@@ -145,7 +145,14 @@ class MailPage:
 
         subject.click(force=True, timeout=5_000)
 
-    def _click_reset_link_if_present(self) -> bool:
+    def _click_reset_link_if_present(self):
+        """
+        Пытается получить reset-link из видимого anchor:
+        1) из href / outerHTML;
+        2) через открытие новой вкладки;
+        3) через переход в этой же вкладке.
+        Возвращает reset-link (str) или None.
+        """
         link_locators = [
             "a:has-text('link')",
             "a:has-text('ссылке')",
@@ -154,15 +161,68 @@ class MailPage:
 
         for selector in link_locators:
             try:
-                link = self.page.locator(selector).first
-                if link.count() > 0 and link.is_visible():
+                links = self.page.locator(selector)
+                count = links.count()
+            except Exception:
+                continue
+
+            for idx in range(min(count, 10)):
+                link = links.nth(idx)
+                try:
+                    if not link.is_visible():
+                        continue
+                except Exception:
+                    continue
+
+                # 1) Сначала пытаемся вытащить URL без клика (href / html)
+                try:
                     href = link.get_attribute("href") or ""
                     reset_link = self._extract_reset_link_from_text(href)
                     if reset_link:
-                        return True
-            except Exception:
-                continue
-        return False
+                        return reset_link
+                except Exception:
+                    pass
+
+                try:
+                    outer_html = link.evaluate("el => el.outerHTML")
+                    reset_link = self._extract_reset_link_from_text(outer_html or "")
+                    if reset_link:
+                        return reset_link
+                except Exception:
+                    pass
+
+                # 2) Пытаемся кликнуть и поймать новую вкладку
+                try:
+                    with self.page.context.expect_page(timeout=3000) as page_info:
+                        link.click(force=True, timeout=2000)
+                    new_page = page_info.value
+                    try:
+                        new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+
+                    popup_url = new_page.url or ""
+                    reset_link = self._extract_reset_link_from_text(popup_url)
+                    if reset_link:
+                        return reset_link
+                except Exception:
+                    pass
+
+                # 3) Переход в текущей вкладке
+                try:
+                    before_url = self.page.url
+                    link.click(force=True, timeout=2000)
+                    self.page.wait_for_timeout(800)
+                    after_url = self.page.url
+
+                    if after_url and after_url != before_url:
+                        reset_link = self._extract_reset_link_from_text(after_url)
+                        if reset_link:
+                            return reset_link
+                except Exception:
+                    continue
+
+        return None
 
     def _extract_reset_link_from_text(self, text):
         if not text:
@@ -391,7 +451,11 @@ class MailPage:
 
         deadline = time.time() + config.EXPLICIT_WAIT
         while time.time() < deadline:
-            self._click_reset_link_if_present()
+            clicked_link = self._click_reset_link_if_present()
+            if clicked_link:
+                print(f"✅ Нашли ссылку по anchor-click: {clicked_link}")
+                return clicked_link
+
             reset_link = self._extract_link_from_page_or_frames()
             if reset_link:
                 print(f"✅ Нашли ссылку: {reset_link}")
