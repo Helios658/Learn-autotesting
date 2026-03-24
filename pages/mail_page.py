@@ -39,9 +39,42 @@ class MailPage:
         self.LOGIN_INPUT = "#username"
         self.PASSWORD_INPUT = "#password"
         self.SIGNIN_BUTTON = ".signinTxt"
-        self.EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Восстановление пароля')]"
+        self.EMAIL_SUBJECT_LOCATORS = [
+            "xpath=//*[contains(text(), 'Восстановление пароля')]",
+            "xpath=//*[contains(text(), 'Password Recovery')]",
+            "xpath=//*[contains(text(), 'Set a new password')]",
+        ]
         self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
         self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
+
+    def _find_recovery_email_subject(self):
+        for selector in self.EMAIL_SUBJECT_LOCATORS:
+            try:
+                subject = self.page.locator(selector).first
+                if subject.count() > 0:
+                    return subject
+            except Exception:
+                continue
+        return None
+
+    def _click_reset_link_if_present(self) -> bool:
+        link_locators = [
+            "a:has-text('link')",
+            "a:has-text('ссылке')",
+            "a[href*='/v2/login/new-password']",
+        ]
+
+        for selector in link_locators:
+            try:
+                link = self.page.locator(selector).first
+                if link.count() > 0 and link.is_visible():
+                    href = link.get_attribute("href") or ""
+                    reset_link = self._extract_reset_link_from_text(href)
+                    if reset_link:
+                        return True
+            except Exception:
+                continue
+        return False
 
     def _extract_reset_link_from_text(self, text):
         if not text:
@@ -236,7 +269,7 @@ class MailPage:
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.page.reload(wait_until="domcontentloaded")
-            if self.page.locator(self.EMAIL_SUBJECT).count() > 0:
+            if self._find_recovery_email_subject() is not None:
                 print("✅ Письмо найдено!")
                 return True
             self.page.wait_for_timeout(2000)
@@ -261,11 +294,16 @@ class MailPage:
         if wait_for_email and not self.wait_for_recovery_email():
             raise RecoveryEmailNotReceivedError("Письмо с восстановлением не пришло")
 
-        self.page.locator(self.EMAIL_SUBJECT).first.click()
+        subject = self._find_recovery_email_subject()
+        if subject is None:
+            raise RecoveryEmailNotReceivedError("Письмо с восстановлением не найдено в списке")
+
+        subject.click()
         self.page.wait_for_timeout(1500)
 
         deadline = time.time() + config.EXPLICIT_WAIT
         while time.time() < deadline:
+            self._click_reset_link_if_present()
             reset_link = self._extract_link_from_page_or_frames()
             if reset_link:
                 print(f"✅ Нашли ссылку: {reset_link}")
