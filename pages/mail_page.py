@@ -39,23 +39,111 @@ class MailPage:
         self.LOGIN_INPUT = "#username"
         self.PASSWORD_INPUT = "#password"
         self.SIGNIN_BUTTON = ".signinTxt"
+        self.RECOVERY_SUBJECT_KEYWORDS = [
+            "Восстановление пароля",
+            "Password Recovery",
+            "Set a new password",
+            "Video Conference System Password Recovery",
+            "gamma.hi-tech.org Video Confer",
+        ]
         self.EMAIL_SUBJECT_LOCATORS = [
-            "xpath=//*[contains(text(), 'Восстановление пароля')]",
-            "xpath=//*[contains(text(), 'Password Recovery')]",
-            "xpath=//*[contains(text(), 'Set a new password')]",
+            "xpath=//a[contains(., 'Восстановление пароля')]",
+            "xpath=//a[contains(., 'Password Recovery')]",
+            "xpath=//a[contains(., 'Set a new password')]",
+            "xpath=//a[contains(., 'Video Conference System Password Recovery')]",
+            "xpath=//a[contains(., 'gamma.hi-tech.org Video Confer')]",
+            "xpath=//span[contains(., 'Восстановление пароля')]/ancestor::a[1]",
+            "xpath=//span[contains(., 'Password Recovery')]/ancestor::a[1]",
+        ]
+        self.CODE_2FA_SUBJECT_KEYWORDS = [
+            "Подтверждение входа",
+            "Verification code",
+            "Login confirmation",
+            "Security code",
         ]
         self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
         self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
 
-    def _find_recovery_email_subject(self):
-        for selector in self.EMAIL_SUBJECT_LOCATORS:
+    @staticmethod
+    def _escape_xpath_text(value: str) -> str:
+        if "'" not in value:
+            return f"'{value}'"
+        if '"' not in value:
+            return f'"{value}"'
+        parts = value.split("'")
+        return "concat(" + ", \"'\", ".join([f"'{part}'" for part in parts]) + ")"
+
+    @staticmethod
+    def _first_visible(locator, limit: int = 30):
+        try:
+            count = locator.count()
+        except Exception:
+            return None
+
+        for idx in range(min(count, limit)):
+            candidate = locator.nth(idx)
             try:
-                subject = self.page.locator(selector).first
-                if subject.count() > 0:
-                    return subject
+                if candidate.is_visible():
+                    return candidate
             except Exception:
                 continue
         return None
+
+    def _find_recovery_email_subject(self):
+        for selector in self.EMAIL_SUBJECT_LOCATORS:
+            try:
+                subject = self._first_visible(self.page.locator(selector))
+                if subject is not None:
+                    return subject
+            except Exception:
+                continue
+        return self._find_email_subject_by_keywords(self.RECOVERY_SUBJECT_KEYWORDS)
+
+    def _find_2fa_email_subject(self):
+        # Приоритет — старый, уже известный локатор.
+        try:
+            subject = self._first_visible(self.page.locator(self.CODE_2FA_EMAIL_SUBJECT))
+            if subject is not None:
+                return subject
+        except Exception:
+            pass
+
+        return self._find_email_subject_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
+
+    def _find_email_subject_by_keywords(self, keywords):
+        for keyword in keywords:
+            escaped = self._escape_xpath_text(keyword)
+            selectors = [
+                f"xpath=//a[contains(., {escaped})]",
+                f"xpath=//span[contains(., {escaped})]/ancestor::a[1]",
+                f"xpath=//span[contains(., {escaped})]/ancestor::div[1]",
+                f"xpath=//div[contains(., {escaped}) and @role='option']",
+            ]
+            for selector in selectors:
+                try:
+                    subject = self._first_visible(self.page.locator(selector))
+                    if subject is not None:
+                        return subject
+                except Exception:
+                    continue
+        return None
+
+    def _open_email_by_subject(self, subject):
+        try:
+            subject.click(timeout=5_000)
+            return
+        except Exception:
+            pass
+
+        try:
+            parent_anchor = subject.locator("xpath=ancestor::a[1]").first
+            if parent_anchor.count() > 0 and parent_anchor.is_visible():
+                parent_anchor.click(timeout=5_000)
+                return
+        except Exception:
+            pass
+
+        subject.click(force=True, timeout=5_000)
 
     def _click_reset_link_if_present(self) -> bool:
         link_locators = [
@@ -298,7 +386,7 @@ class MailPage:
         if subject is None:
             raise RecoveryEmailNotReceivedError("Письмо с восстановлением не найдено в списке")
 
-        subject.click()
+        self._open_email_by_subject(subject)
         self.page.wait_for_timeout(1500)
 
         deadline = time.time() + config.EXPLICIT_WAIT
@@ -318,7 +406,7 @@ class MailPage:
 
         subject = self.page.locator(self.INVITE_EMAIL_SUBJECT).first
         subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        subject.click()
+        self._open_email_by_subject(subject)
         self.page.wait_for_timeout(1500)
         return self
 
@@ -366,7 +454,7 @@ class MailPage:
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.page.reload(wait_until="domcontentloaded")
-            if self.page.locator(self.CODE_2FA_EMAIL_SUBJECT).count() > 0:
+            if self._find_2fa_email_subject() is not None:
                 print("✅ Письмо найдено!")
                 return True
             self.page.wait_for_timeout(2000)
@@ -378,7 +466,9 @@ class MailPage:
         if wait_for_email and not self.wait_for_2fa_code_email():
             raise Code2FAEmailNotReceivedError("Письмо с кодом не пришло")
 
-        subject = self.page.locator(self.CODE_2FA_EMAIL_SUBJECT).first
+        subject = self._find_2fa_email_subject()
+        if subject is None:
+            raise Code2FAEmailNotReceivedError("Письмо с кодом не найдено в списке")
         subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         subject.click()
         self.page.wait_for_timeout(1500)
