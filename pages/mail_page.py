@@ -145,6 +145,26 @@ class MailPage:
 
         subject.click(force=True, timeout=5_000)
 
+    @staticmethod
+    def _extract_recovery_anchor_href(context):
+        try:
+            href = context.evaluate(
+                """
+                () => {
+                  const anchors = Array.from(document.querySelectorAll('a[href]'));
+                  const target = anchors.find(a => {
+                    const txt = (a.textContent || '').trim().toLowerCase();
+                    return txt === 'link' || txt === 'ссылке';
+                  });
+                  if (!target) return '';
+                  return target.getAttribute('href') || target.href || '';
+                }
+                """
+            )
+            return href or None
+        except Exception:
+            return None
+
     def _click_reset_link_if_present(self):
         """
         Пытается получить reset-link из видимого anchor:
@@ -163,6 +183,11 @@ class MailPage:
         search_contexts = [self.page, *self.page.frames]
 
         for context in search_contexts:
+            direct_href = self._extract_recovery_anchor_href(context)
+            direct_link = self._extract_first_http_url(direct_href or "")
+            if direct_link:
+                return direct_link
+
             for selector in link_locators:
                 try:
                     links = context.locator(selector)
@@ -180,14 +205,19 @@ class MailPage:
 
                     # 1) Сначала пытаемся вытащить URL без клика (href / html)
                     for href_expr in (
-                            "el => el.getAttribute('href') || ''",
-                            "el => el.href || ''",
+                        "el => el.getAttribute('href') || ''",
+                        "el => el.href || ''",
                     ):
                         try:
                             href = link.evaluate(href_expr) or ""
                             reset_link = self._extract_reset_link_from_text(href)
                             if reset_link:
                                 return reset_link
+
+                            if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
+                                fallback_href = self._extract_first_http_url(href)
+                                if fallback_href:
+                                    return fallback_href
                         except Exception:
                             pass
 
@@ -213,6 +243,11 @@ class MailPage:
                         reset_link = self._extract_reset_link_from_text(popup_url)
                         if reset_link:
                             return reset_link
+
+                        if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
+                            fallback_popup_url = self._extract_first_http_url(popup_url)
+                            if fallback_popup_url:
+                                return fallback_popup_url
                     except Exception:
                         pass
 
@@ -227,9 +262,27 @@ class MailPage:
                             reset_link = self._extract_reset_link_from_text(after_url)
                             if reset_link:
                                 return reset_link
+
+                            if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
+                                fallback_after_url = self._extract_first_http_url(after_url)
+                                if fallback_after_url:
+                                    return fallback_after_url
                     except Exception:
                         continue
 
+        return None
+
+    @staticmethod
+    def _extract_first_http_url(text):
+        if not text:
+            return None
+
+        variants = [text, unescape(text), unquote(unescape(text))]
+        pattern = r"https?://[^\s<>\"']+"
+        for variant in variants:
+            match = re.search(pattern, variant)
+            if match:
+                return unescape(match.group(0))
         return None
 
     def _extract_reset_link_from_text(self, text):
@@ -463,7 +516,6 @@ class MailPage:
             if clicked_link:
                 print(f"✅ Нашли ссылку по anchor-click: {clicked_link}")
                 return clicked_link
-
             reset_link = self._extract_link_from_page_or_frames()
             if reset_link:
                 print(f"✅ Нашли ссылку: {reset_link}")
