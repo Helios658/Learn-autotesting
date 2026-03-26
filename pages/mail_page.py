@@ -3,6 +3,7 @@ import time
 from html import unescape
 from urllib.parse import unquote, urlparse
 from config import config
+from playwright.sync_api import Error as PlaywrightError
 
 class MailPageError(RuntimeError):
     """Базовая ошибка для сценариев работы с почтой."""
@@ -77,7 +78,7 @@ class MailPage:
     def _first_visible(locator, limit: int = 30):
         try:
             count = locator.count()
-        except Exception:
+        except PlaywrightError:
             return None
 
         for idx in range(min(count, limit)):
@@ -85,7 +86,7 @@ class MailPage:
             try:
                 if candidate.is_visible():
                     return candidate
-            except Exception:
+            except PlaywrightError:
                 continue
         return None
 
@@ -95,7 +96,7 @@ class MailPage:
                 subject = self._first_visible(self.page.locator(selector))
                 if subject is not None:
                     return subject
-            except Exception:
+            except PlaywrightError:
                 continue
         return self._find_email_subject_by_keywords(self.RECOVERY_SUBJECT_KEYWORDS)
 
@@ -105,7 +106,7 @@ class MailPage:
             subject = self._first_visible(self.page.locator(self.CODE_2FA_EMAIL_SUBJECT))
             if subject is not None:
                 return subject
-        except Exception:
+        except PlaywrightError:
             pass
 
         return self._find_email_subject_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
@@ -124,7 +125,7 @@ class MailPage:
                     subject = self._first_visible(self.page.locator(selector))
                     if subject is not None:
                         return subject
-                except Exception:
+                except PlaywrightError:
                     continue
         return None
 
@@ -132,7 +133,7 @@ class MailPage:
         try:
             subject.click(timeout=5_000)
             return
-        except Exception:
+        except PlaywrightError:
             pass
 
         try:
@@ -140,7 +141,7 @@ class MailPage:
             if parent_anchor.count() > 0 and parent_anchor.is_visible():
                 parent_anchor.click(timeout=5_000)
                 return
-        except Exception:
+        except PlaywrightError:
             pass
 
         subject.click(force=True, timeout=5_000)
@@ -162,18 +163,10 @@ class MailPage:
                 """
             )
             return href or None
-        except Exception:
+        except PlaywrightError:
             return None
 
     def _click_reset_link_if_present(self):
-        """
-        Пытается получить reset-link из видимого anchor:
-        1) из href / outerHTML;
-        2) через открытие новой вкладки;
-        3) через переход в этой же вкладке.
-        Проверяет как текущую страницу, так и iframe письма.
-        Возвращает reset-link (str) или None.
-        """
         link_locators = [
             "a:has-text('link')",
             "a:has-text('ссылке')",
@@ -192,7 +185,7 @@ class MailPage:
                 try:
                     links = context.locator(selector)
                     count = links.count()
-                except Exception:
+                except PlaywrightError:
                     continue
 
                 for idx in range(min(count, 10)):
@@ -200,7 +193,7 @@ class MailPage:
                     try:
                         if not link.is_visible():
                             continue
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
                     # 1) Сначала пытаемся вытащить URL без клика (href / html)
@@ -218,7 +211,7 @@ class MailPage:
                                 fallback_href = self._extract_first_http_url(href)
                                 if fallback_href:
                                     return fallback_href
-                        except Exception:
+                        except PlaywrightError:
                             pass
 
                     try:
@@ -226,7 +219,7 @@ class MailPage:
                         reset_link = self._extract_reset_link_from_text(outer_html or "")
                         if reset_link:
                             return reset_link
-                    except Exception:
+                    except PlaywrightError:
                         pass
 
                     # 2) Пытаемся кликнуть и поймать новую вкладку
@@ -236,7 +229,7 @@ class MailPage:
                         new_page = page_info.value
                         try:
                             new_page.wait_for_load_state("domcontentloaded", timeout=5000)
-                        except Exception:
+                        except PlaywrightError:
                             pass
 
                         popup_url = new_page.url or ""
@@ -248,7 +241,7 @@ class MailPage:
                             fallback_popup_url = self._extract_first_http_url(popup_url)
                             if fallback_popup_url:
                                 return fallback_popup_url
-                    except Exception:
+                    except PlaywrightError:
                         pass
 
                     # 3) Переход в текущей вкладке
@@ -267,7 +260,7 @@ class MailPage:
                                 fallback_after_url = self._extract_first_http_url(after_url)
                                 if fallback_after_url:
                                     return fallback_after_url
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
         return None
@@ -333,7 +326,7 @@ class MailPage:
                     link = self._extract_reset_link_from_text(href)
                     if link:
                         return link
-            except Exception:
+            except PlaywrightError:
                 continue
 
         return None
@@ -431,7 +424,7 @@ class MailPage:
                     link = self._extract_join_link_from_text(href)
                     if link:
                         return link
-            except Exception:
+            except PlaywrightError:
                 continue
 
         return None
@@ -468,7 +461,7 @@ class MailPage:
         try:
             self.page.wait_for_url(re.compile(r"/mail/"), timeout=config.EXPLICIT_WAIT * 1000)
             print(f"✅ Успешный вход на почту: {username}")
-        except Exception:
+        except PlaywrightError:
             print("⚠️ Возможно проблемы со входом, но продолжаем...")
 
         return self
@@ -560,7 +553,7 @@ class MailPage:
                 code = self._extract_code_from_text(frame.content())
                 if code:
                     return code
-            except Exception:
+            except PlaywrightError:
                 pass
 
             try:
@@ -568,7 +561,7 @@ class MailPage:
                 code = self._extract_code_from_text(frame_text)
                 if code:
                     return code
-            except Exception:
+            except PlaywrightError:
                 pass
 
         return None

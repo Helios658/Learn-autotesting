@@ -59,7 +59,7 @@ class GuestJoinPage:
         while time.time() < deadline:
             try:
                 close_meeting_start_popup_if_present(self.page)
-            except Exception:
+            except PlaywrightError:
                 pass
             for selector in selectors:
                 try:
@@ -87,7 +87,7 @@ class GuestJoinPage:
     def click_join(self) -> None:
         try:
             close_meeting_start_popup_if_present(self.page)
-        except Exception:
+        except PlaywrightError:
             pass
 
         join_btn = self.page.locator("[e2e-id='auth-info__join-button']").first
@@ -99,7 +99,7 @@ class GuestJoinPage:
             try:
                 if join_btn.is_enabled():
                     break
-            except Exception:
+            except PlaywrightError:
                 pass
             self.close_overlay_if_present()
             self.page.wait_for_timeout(300)
@@ -110,7 +110,7 @@ class GuestJoinPage:
         try:
             join_btn.click(timeout=3000)
             return
-        except Exception:
+        except PlaywrightError:
             pass
 
         # Если мешает overlay — закрываем и пробуем снова
@@ -119,7 +119,7 @@ class GuestJoinPage:
         try:
             join_btn.click(force=True, timeout=3000)
             return
-        except Exception:
+        except PlaywrightError:
             pass
 
         handle = join_btn.element_handle()
@@ -132,7 +132,7 @@ class GuestJoinPage:
     def join(self, name: str) -> None:
         try:
             close_meeting_start_popup_if_present(self.page)
-        except Exception:
+        except PlaywrightError:
             pass
 
         # Если после перехода по ссылке пользователь уже попал в конференцию,
@@ -154,7 +154,7 @@ class GuestJoinPage:
                     self.click_join_after_mail_link()
                     if self.is_in_conference(timeout_ms=3000):
                         return
-                except Exception:
+                except (AssertionError, PlaywrightError):
                     pass
 
                 if attempt == 0:
@@ -169,7 +169,7 @@ class GuestJoinPage:
             try:
                 if join_btn.is_enabled():
                     break
-            except Exception:
+            except PlaywrightError:
                 pass
             self.page.wait_for_timeout(300)
 
@@ -221,11 +221,11 @@ class GuestJoinPage:
                 return True
             try:
                 self.close_overlay_if_present()
-            except Exception:
+            except PlaywrightError:
                 pass
             try:
                 self.click_join()
-            except Exception:
+            except (AssertionError, PlaywrightError):
                 pass
             self.page.wait_for_timeout(1500)
             current_url = self.page.url or ""
@@ -242,7 +242,7 @@ class GuestJoinPage:
                     locator.click(force=True)
                     self.page.wait_for_timeout(500)
                     return True
-            except Exception:
+            except PlaywrightError:
                 continue
         return False
 

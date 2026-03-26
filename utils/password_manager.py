@@ -30,7 +30,7 @@ class PasswordManager:
             with open(self.password_file, 'w', encoding='utf-8') as f:
                 f.write(password)
             return True
-        except Exception as e:
+        except OSError as e:
             print(f"❌ Ошибка сохранения пароля: {e}")
             return False
 

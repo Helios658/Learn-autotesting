@@ -1,8 +1,8 @@
 from __future__ import annotations
-
 import re
 from pathlib import Path
 from datetime import datetime
+from playwright.sync_api import Error as PlaywrightError
 
 
 def _safe_name(name: str) -> str:
@@ -33,19 +33,19 @@ def save_artifacts(page, test_name: str, out_dir: str = "artifacts") -> dict:
     # screenshot
     try:
         page.screenshot(path=str(png_path), full_page=True)
-    except Exception as exc:
+    except PlaywrightError as exc:
         print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # html
     try:
         html_path.write_text(page.content(), encoding="utf-8")
-    except Exception as exc:
+    except (PlaywrightError, OSError) as exc:
         print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # url/meta
     try:
         meta_path.write_text(f"URL: {page.url}\n", encoding="utf-8")
-    except Exception as exc:
+    except OSError as exc:
         print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     # ✅ attach в Allure (если установлен)
@@ -73,7 +73,7 @@ def save_artifacts(page, test_name: str, out_dir: str = "artifacts") -> dict:
                 attachment_type=allure.attachment_type.TEXT,
             )
 
-    except Exception as exc:
+    except (ImportError, AttributeError, OSError) as exc:
         print(f"⚠️ Не удалось сохранить screenshot: {exc}")
 
     return {

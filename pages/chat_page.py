@@ -1,5 +1,7 @@
 from config import config
 from pages.base_page import BasePage
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
 class ChatPage(BasePage):
@@ -51,7 +53,7 @@ class ChatPage(BasePage):
             try:
                 locator.wait_for(state="visible", timeout=3000)
                 return locator
-            except Exception:
+            except PlaywrightTimeoutError:
                 continue
         raise AssertionError("Не найден контейнер экрана создания чата")
 
@@ -61,7 +63,10 @@ class ChatPage(BasePage):
         search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         search_input.fill("")
         search_input.fill(value)
-        self.page.wait_for_timeout(700)
+        container.locator(self.CREATE_CHAT_CONTACT).first.wait_for(
+            state="visible",
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
 
     def select_user_from_new_chat_results(self, user_text: str):
         container = self.get_create_chat_container()
@@ -86,7 +91,7 @@ class ChatPage(BasePage):
                     self.safe_click(row)
                     return
 
-            except Exception:
+            except PlaywrightTimeoutError:
                 continue
 
         raise AssertionError(f"Не найден пользователь в результатах создания чата: {user_text}")
@@ -109,7 +114,10 @@ class ChatPage(BasePage):
         search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         search_input.fill("")
         search_input.fill(user_text)
-        self.page.wait_for_timeout(700)
+        self.page.locator(self.CHAT_LIST_ITEM).first.wait_for(
+            state="visible",
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
 
         row = self.page.locator(self.CHAT_LIST_ITEM).filter(
             has=self.page.locator(f"mark.highlighted:has-text('{user_text}')")
@@ -117,7 +125,7 @@ class ChatPage(BasePage):
 
         try:
             row.wait_for(state="visible", timeout=3000)
-        except Exception:
+        except PlaywrightTimeoutError:
             row = self.page.locator(self.CHAT_LIST_ITEM).filter(
                 has=self.page.locator(f"{self.CHAT_CARD_TITLE}:has-text('{user_text}')")
             ).first
@@ -141,7 +149,7 @@ class ChatPage(BasePage):
                 state="visible", timeout=5000
             )
             return True
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             return False
 
     # =========================
@@ -167,7 +175,7 @@ class ChatPage(BasePage):
                 if send_button.is_enabled():
                     self.safe_click(send_button)
                     return
-            except Exception:
+            except PlaywrightError:
                 pass
 
             self.page.wait_for_timeout(200)
@@ -188,5 +196,5 @@ class ChatPage(BasePage):
                 timeout=timeout_ms,
             )
             return True
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             return False

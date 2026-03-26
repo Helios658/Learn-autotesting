@@ -52,7 +52,7 @@ class NewPasswordPage:
                     try:
                         if candidate.is_visible():
                             return candidate
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
             # frames
@@ -66,9 +66,9 @@ class NewPasswordPage:
                             try:
                                 if candidate.is_visible():
                                     return candidate
-                            except Exception:
+                            except PlaywrightError:
                                 continue
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
             self.page.wait_for_timeout(250)
@@ -113,7 +113,7 @@ class NewPasswordPage:
                     ]
                     if len(visible_frame_passwords) >= 2:
                         return visible_frame_passwords[0], visible_frame_passwords[1]
-                except Exception:
+                except PlaywrightError:
                     continue
 
             self.page.wait_for_timeout(250)
@@ -152,7 +152,7 @@ class NewPasswordPage:
         save_button = None
         try:
             save_button = self._first_visible_any_context(self.SAVE_BUTTONS)
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             # fallback: берем первую видимую кнопку с текстом про изменение/сохранение пароля
             buttons = self.page.locator("button")
             for i in range(buttons.count()):
@@ -164,7 +164,7 @@ class NewPasswordPage:
                     if any(token in text for token in ("изменить", "сохранить", "save", "парол")):
                         save_button = candidate
                         break
-                except Exception:
+                except PlaywrightError:
                     continue
         if save_button is None:
             self._debug_dump("new_password_save_button_not_found")

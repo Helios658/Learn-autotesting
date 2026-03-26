@@ -67,7 +67,7 @@ class RegistrationPage:
                     locator = self.page.locator(selector)
                     if locator.count() > 0 and locator.first.is_visible():
                         return True
-                except Exception:
+                except PlaywrightError:
                     pass
 
             self.page.wait_for_timeout(250)
@@ -88,14 +88,14 @@ class RegistrationPage:
                 if register_btn.count() > 0 and register_btn.is_visible():
                     try:
                         register_btn.click(force=True)
-                    except Exception:
+                    except PlaywrightError:
                         pass
-            except Exception:
+            except PlaywrightError:
                 pass
 
             try:
                 self.page.reload(wait_until="domcontentloaded")
-            except Exception:
+            except PlaywrightError:
                 pass
 
             if self.is_registration_completed(timeout_ms=3000):

@@ -1,5 +1,5 @@
 import time
-
+from playwright.sync_api import Error as PlaywrightError
 from config import config
 from pages.base_page import BasePage
 
@@ -68,7 +68,7 @@ class ChangePasswordModalPage(BasePage):
                 for text in variants:
                     if self._normalize_text(text) in normalized_body:
                         return True
-            except Exception:
+            except PlaywrightError:
                 pass
 
             self.page.wait_for_timeout(250)
@@ -81,7 +81,7 @@ class ChangePasswordModalPage(BasePage):
 
         try:
             body_excerpt = self.page.locator("body").inner_text()[:2000]
-        except Exception:
+        except PlaywrightError:
             body_excerpt = "<не удалось получить body.inner_text()>"
 
         expected = " | ".join(variants)

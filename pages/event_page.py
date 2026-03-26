@@ -1,5 +1,6 @@
 from config import config
 from pages.base_page import BasePage
+from playwright.sync_api import Error as PlaywrightError
 
 
 class EventPage(BasePage):
@@ -150,7 +151,7 @@ class EventPage(BasePage):
     def back_to_list(self):
         try:
             self.page.locator(self.HAMBURGER_BUTTON).first.click(timeout=5000)
-        except Exception:
+        except PlaywrightError:
             self.page.locator(self.HAMBURGER_BUTTON).first.click(force=True)
 
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
@@ -201,7 +202,7 @@ class EventPage(BasePage):
                 settings_button = self._find_first_visible(self.CONFERENCES_TAB_SETTINGS_LOCATORS, timeout=2500)
                 self.safe_click(settings_button)
                 return
-            except Exception:
+            except PlaywrightError:
                 continue
 
         raise AssertionError(
@@ -327,7 +328,7 @@ class EventPage(BasePage):
         try:
             if loader.count() > 0:
                 loader.wait_for(state="hidden", timeout=timeout_ms)
-        except Exception:
+        except PlaywrightError:
             pass
 
     def _escape_xpath_text(self, value: str) -> str:
@@ -352,7 +353,7 @@ class EventPage(BasePage):
 
         try:
             input_locator.press("Enter")
-        except Exception:
+        except PlaywrightError:
             pass
 
         self._wait_invite_loader_disappear(timeout_ms=7000)
@@ -374,7 +375,7 @@ class EventPage(BasePage):
                 try:
                     if row.count() > 0 and row.is_visible():
                         return row
-                except Exception:
+                except PlaywrightError:
                     continue
 
             self.page.wait_for_timeout(250)
@@ -387,7 +388,7 @@ class EventPage(BasePage):
                 try:
                     if row.is_visible():
                         return row
-                except Exception:
+                except PlaywrightError:
                     continue
 
         raise AssertionError(f"Не удалось найти строку участника: {value}")
@@ -399,27 +400,27 @@ class EventPage(BasePage):
                 try:
                     if checkbox_input.is_checked():
                         return True
-                except Exception:
+                except PlaywrightError:
                     pass
 
                 checked_attr = checkbox_input.get_attribute("checked")
                 if checked_attr is not None:
                     return True
-        except Exception:
+        except PlaywrightError:
             pass
 
         try:
             aria_checked = (participant_row.locator("iva-checkbox").first.get_attribute("aria-checked") or "").lower()
             if aria_checked == "true":
                 return True
-        except Exception:
+        except PlaywrightError:
             pass
 
         try:
             classes = (participant_row.get_attribute("class") or "").lower()
             if "selected" in classes or "checked" in classes or "active" in classes:
                 return True
-        except Exception:
+        except PlaywrightError:
             pass
 
         return False
@@ -436,7 +437,7 @@ class EventPage(BasePage):
                     try:
                         if button.is_visible() and button.is_enabled():
                             return True
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
             self.page.wait_for_timeout(250)
@@ -461,7 +462,7 @@ class EventPage(BasePage):
                 elif checkbox_input.count() > 0:
                     try:
                         checkbox_input.check(force=True)
-                    except Exception:
+                    except PlaywrightError:
                         handle = checkbox_input.element_handle()
                         if handle is not None:
                             self.page.evaluate(
@@ -492,7 +493,7 @@ class EventPage(BasePage):
                         self._wait_invite_loader_disappear(timeout_ms=2000)
                         if self._wait_add_button_enabled(timeout_ms=3000):
                             return
-                except Exception:
+                except PlaywrightError:
                     pass
 
                 try:
@@ -501,16 +502,16 @@ class EventPage(BasePage):
                     self._wait_invite_loader_disappear(timeout_ms=2000)
                     if self._wait_add_button_enabled(timeout_ms=3000):
                         return
-                except Exception:
+                except PlaywrightError:
                     pass
 
-            except Exception as e:
+            except PlaywrightError as e:
                 last_error = e
 
         debug_text = ""
         try:
             debug_text = participant_row.inner_text()
-        except Exception:
+        except PlaywrightError:
             pass
 
         raise AssertionError(
@@ -523,12 +524,12 @@ class EventPage(BasePage):
         try:
             if not button.is_visible():
                 return False
-        except Exception:
+        except PlaywrightError:
             return False
 
         try:
             return button.is_enabled()
-        except Exception:
+        except PlaywrightError:
             return False
 
     def submit_invite_participant(self):
@@ -549,12 +550,12 @@ class EventPage(BasePage):
                             f"aria-disabled={button.get_attribute('aria-disabled')}, "
                             f"text={(button.inner_text() or '').strip()}"
                         )
-                    except Exception as e:
+                    except PlaywrightError as e:
                         debug_lines.append(f"idx={idx}, read_error={e}")
 
             try:
                 self.page.screenshot(path="invite_participant_debug.png", full_page=True)
-            except Exception:
+            except PlaywrightError:
                 pass
 
             raise AssertionError(
@@ -572,7 +573,7 @@ class EventPage(BasePage):
                     if button.is_visible() and button.is_enabled():
                         self.safe_click(button)
                         return
-                except Exception:
+                except PlaywrightError:
                     continue
 
         raise AssertionError("Не удалось нажать кнопку 'Добавить', хотя она стала активной")
@@ -596,7 +597,7 @@ class EventPage(BasePage):
         try:
             if checkbox.is_checked():
                 return
-        except Exception:
+        except PlaywrightError:
             pass
 
         # Сначала пробуем кликнуть по видимой кастомной обертке рядом с checkbox
@@ -616,9 +617,9 @@ class EventPage(BasePage):
                     try:
                         if checkbox.is_checked():
                             return
-                    except Exception:
+                    except PlaywrightError:
                         pass
-            except Exception:
+            except PlaywrightError:
                 continue
 
         # Если визуальный клик не помог — включаем напрямую через JS
@@ -656,7 +657,7 @@ class EventPage(BasePage):
             button.click(force=True)
             self.page.wait_for_timeout(500)
             return
-        except Exception:
+        except PlaywrightError:
             pass
 
         self.close_event_start_popup_if_present()
@@ -677,8 +678,8 @@ class EventPage(BasePage):
                                 close_btn.click(force=True)
                                 self.page.wait_for_timeout(700)
                                 return True
-                        except Exception:
+                        except PlaywrightError:
                             continue
-            except Exception:
+            except PlaywrightError:
                 continue
         return False

@@ -100,7 +100,7 @@ class LoginPage(BasePage):
                     try:
                         if candidate.is_visible():
                             return candidate
-                    except Exception:
+                    except PlaywrightError:
                         continue
 
             for frame in self.page.frames:
@@ -113,9 +113,9 @@ class LoginPage(BasePage):
                             try:
                                 if candidate.is_visible():
                                     return candidate
-                            except Exception:
+                            except PlaywrightError:
                                 continue
-                    except Exception:
+                    except PlaywrightError:
                         continue
             self.page.wait_for_timeout(250)
 
@@ -230,7 +230,7 @@ class LoginPage(BasePage):
                     candidate = group.nth(idx)
                     if candidate.is_visible():
                         candidates.append(candidate)
-            except Exception:
+            except PlaywrightError:
                 continue
 
         if not candidates:
@@ -247,7 +247,7 @@ class LoginPage(BasePage):
             popup_page = None
             try:
                 link_text = adfs_element.inner_text(timeout=1000)
-            except Exception:
+            except PlaywrightError:
                 link_text = "<unknown>"
             print(f"ℹ️ Кликаем ADFS провайдер: {link_text.strip()} | URL до клика: {self.page.url}")
 
@@ -257,7 +257,7 @@ class LoginPage(BasePage):
                     if not clicked:
                         raise PlaywrightTimeoutError("Не удалось кликнуть по ADFS-провайдеру")
                 popup_page = page_info.value
-            except Exception:
+            except (PlaywrightError, PlaywrightTimeoutError):
                 if not self._click_with_fallback(adfs_element):
                     last_error = PlaywrightTimeoutError("Не удалось кликнуть по ADFS-провайдеру")
                     continue
@@ -272,14 +272,14 @@ class LoginPage(BasePage):
                         self.page = popup_page
                         print(f"✅ ADFS открыт (popup), URL: {self.page.url}")
                         return
-                except Exception:
+                except PlaywrightError:
                     pass
 
             try:
                 self._wait_for_adfs_ready(primary_page=self.page, popup_page=popup_page, timeout_seconds=6)
                 print(f"✅ ADFS открыт, текущий URL: {self.page.url}")
                 return
-            except Exception as exc:
+            except (PlaywrightError, PlaywrightTimeoutError) as exc:
                 last_error = exc
                 print(f"⚠️ После клика не открылся ADFS, пробуем следующий провайдер. Ошибка: {exc}")
 
@@ -294,21 +294,21 @@ class LoginPage(BasePage):
         try:
             if pattern.search(primary_page.url or ""):
                 return
-        except Exception:
+        except PlaywrightError:
             pass
         if popup_page is not None:
             try:
                 if pattern.search(popup_page.url or ""):
                     self.page = popup_page
                     return
-            except Exception:
+            except PlaywrightError:
                 pass
 
         # 1) Навигация в текущей вкладке.
         try:
             primary_page.wait_for_url(pattern, timeout=timeout_ms, wait_until="domcontentloaded")
             return
-        except Exception:
+        except PlaywrightTimeoutError:
             pass
 
         # 2) Навигация в popup-вкладке (если появилась).
@@ -317,7 +317,7 @@ class LoginPage(BasePage):
                 popup_page.wait_for_url(pattern, timeout=timeout_ms, wait_until="domcontentloaded")
                 self.page = popup_page
                 return
-            except Exception:
+            except PlaywrightTimeoutError:
                 pass
 
         # 3) fallback: могли не сменить URL, но ADFS форма уже в DOM.
@@ -339,7 +339,7 @@ class LoginPage(BasePage):
                         if locator.count() > 0 and locator.first.is_visible():
                             self.page = target_page
                             return
-                    except Exception:
+                    except PlaywrightError:
                         continue
             primary_page.wait_for_timeout(250)
 

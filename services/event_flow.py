@@ -2,6 +2,7 @@ import re
 import time
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Error as PlaywrightError
 from pages.event_page import EventPage
 from pages.guest_join_page import GuestJoinPage
 from pages.guest_auth_modal_page import GuestAuthModalPage
@@ -63,7 +64,7 @@ class EventFlow:
                     self.event_page.safe_click(locator, timeout=2000)
                     if target_event_id in (self.driver.url or ""):
                         return locator
-            except Exception:
+            except PlaywrightError:
                 continue
 
         max_scroll_steps = 120
@@ -82,17 +83,17 @@ class EventFlow:
                 try:
                     if not card.is_visible():
                         continue
-                except Exception:
+                except PlaywrightError:
                     continue
 
                 try:
                     card.scroll_into_view_if_needed(timeout=1200)
-                except Exception:
+                except PlaywrightError:
                     pass
 
                 try:
                     self.event_page.safe_click(card, timeout=1500)
-                except Exception:
+                except PlaywrightError:
                     continue
 
                 if target_event_id in (self.driver.url or ""):
@@ -363,7 +364,7 @@ class EventFlow:
         try:
             body = response_info.value.json()
             event_id = body.get("conferenceSessionId") or body.get("id")
-        except Exception:
+        except (ValueError, TypeError, PlaywrightError):
             event_id = None
 
         if not event_id:
@@ -394,7 +395,7 @@ class EventFlow:
         # если модалка уже успела появиться — закрываем
         try:
             self.event_page.close_event_start_popup_if_present()
-        except Exception:
+        except PlaywrightError:
             pass
 
         self.event_page.click_copy_registration_link()
@@ -406,7 +407,7 @@ class EventFlow:
         while time.time() < deadline:
             try:
                 registration_url = self._read_link_from_clipboard().strip()
-            except Exception:
+            except PlaywrightError:
                 registration_url = ""
 
             if registration_url.startswith("http") or "join:" in registration_url:
@@ -414,12 +415,12 @@ class EventFlow:
 
             try:
                 self.event_page.close_event_start_popup_if_present()
-            except Exception:
+            except PlaywrightError:
                 pass
 
             try:
                 self.event_page.click_copy_registration_link()
-            except Exception:
+            except PlaywrightError:
                 pass
 
             self.driver.wait_for_timeout(700)
@@ -450,7 +451,7 @@ class EventFlow:
 
             try:
                 login_page.click_login_button()
-            except Exception:
+            except PlaywrightError:
                 pass
 
             guest_page.wait_for_load_state("domcontentloaded")
@@ -482,13 +483,13 @@ class EventFlow:
 
             try:
                 login_page.click_login_button()
-            except Exception:
+            except PlaywrightError:
                 pass
 
             guest_page.wait_for_load_state("domcontentloaded")
             guest_page.wait_for_timeout(2000)
 
             return guest_context, guest_page
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
             guest_context.close()
             raise

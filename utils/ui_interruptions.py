@@ -34,8 +34,6 @@ def close_meeting_start_popup_if_present(page) -> bool:
                 break
         except PlaywrightError:
             continue
-        except Exception:
-            continue
 
     if not popup_detected:
         return False
@@ -48,8 +46,6 @@ def close_meeting_start_popup_if_present(page) -> bool:
                 page.wait_for_timeout(200)
                 return True
         except PlaywrightError:
-            continue
-        except Exception:
             continue
 
     # fallback: иногда видна только "Войти" (okButton). Не кликаем её специально,
@@ -70,7 +66,7 @@ def close_need_play_modal_if_present(page) -> bool:
                 btn.click(force=True, timeout=1500)
                 page.wait_for_timeout(200)
                 return True
-        except Exception:
+        except PlaywrightError:
             continue
 
     return False

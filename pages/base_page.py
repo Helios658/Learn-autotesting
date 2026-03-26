@@ -13,7 +13,7 @@ class BasePage:
         while time.time() < deadline:
             try:
                 close_meeting_start_popup_if_present(self.page)
-            except Exception:
+            except (PlaywrightError, PlaywrightTimeoutError):
                 pass
             for selector in selectors:
                 try:
@@ -43,7 +43,7 @@ class BasePage:
         """
         try:
             close_meeting_start_popup_if_present(self.page)
-        except Exception:
+        except (PlaywrightError, PlaywrightTimeoutError):
             pass
 
         locator = selector if hasattr(selector, "click") else self.page.locator(selector)
@@ -59,7 +59,7 @@ class BasePage:
         except (PlaywrightTimeoutError, PlaywrightError):
             try:
                 close_meeting_start_popup_if_present(self.page)
-            except Exception:
+            except (PlaywrightError, PlaywrightTimeoutError):
                 pass
 
         try:

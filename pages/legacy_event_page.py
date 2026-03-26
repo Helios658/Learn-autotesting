@@ -1,5 +1,6 @@
 import re
-
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pages.base_page import BasePage
 from config import config
 
@@ -55,7 +56,7 @@ class LegacyEventPage(BasePage):
         try:
             btn = self.page.locator(selector).first
             btn.wait_for(state="visible", timeout=timeout_ms)
-        except Exception:
+        except PlaywrightTimeoutError:
             return False
 
         self.safe_click(btn)
@@ -103,7 +104,7 @@ class LegacyEventPage(BasePage):
             try:
                 self._find_first_visible(self.CREATE_TICKETS_LINK_LOCATORS, timeout=5000)
                 return self
-            except Exception:
+            except PlaywrightTimeoutError:
                 # После переключения в legacy всплывающие окна могут появляться с задержкой
                 # и перекрывать кнопку создания мероприятия.
                 self.close_post_switch_popups()
@@ -113,7 +114,7 @@ class LegacyEventPage(BasePage):
     def _click_first_visible(self, selectors, timeout_ms: int = 5000, required: bool = True):
         try:
             el = self._find_first_visible(selectors, timeout=timeout_ms)
-        except Exception:
+        except PlaywrightTimeoutError:
             if required:
                 raise AssertionError(f"Не найден элемент для клика по локаторам: {selectors}")
             return False
@@ -127,7 +128,7 @@ class LegacyEventPage(BasePage):
                     self.CREATE_TICKETS_LINK_LOCATORS,
                     timeout=config.EXPLICIT_WAIT * 1000,
                 )
-            except Exception:
+            except PlaywrightTimeoutError:
                 # Диалог создания мог не открыться/закрыться из-за асинхронного legacy UI.
                 self.open_create_event()
                 if attempt < 2:
@@ -228,14 +229,14 @@ class LegacyEventPage(BasePage):
                     for candidate in (href, value, text):
                         if self._looks_like_url(candidate):
                             return candidate
-            except Exception:
+            except PlaywrightError:
                 continue
         return ""
 
     def _extract_ticket_url_from_page_html(self) -> str:
         try:
             html = (self.page.content() or "").replace("\\n", " ")
-        except Exception:
+        except PlaywrightError:
             return ""
 
         # Приоритетно ищем ссылки join/ticket/token, чтобы не взять случайный URL страницы.
@@ -284,7 +285,7 @@ class LegacyEventPage(BasePage):
         try:
             self._find_first_visible([self.TICKET_GENERATE], timeout=5000)
             return True
-        except Exception:
+        except PlaywrightTimeoutError:
             return False
 
     def create_event_with_single_ticket(self):

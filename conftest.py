@@ -6,6 +6,7 @@ from datetime import datetime
 from utils.artifacts import save_artifacts
 from config import config
 import socket
+from playwright.sync_api import Error as PlaywrightError
 
 load_dotenv()
 
@@ -126,7 +127,7 @@ def driver(request, playwright_instance: Playwright):
 
         try:
             context.tracing.stop(path=str(trace_path))
-        except Exception as exc:
+        except PlaywrightError as exc:
             print(f"⚠️ Не удалось сохранить trace: {exc}")
 
         # ✅ опционально: attach trace в Allure, если установлен
@@ -139,13 +140,13 @@ def driver(request, playwright_instance: Playwright):
                     name="trace.zip",
                     attachment_type=allure.attachment_type.ZIP,
                 )
-        except Exception as exc:
+        except (ImportError, AttributeError, OSError) as exc:
             print(f"⚠️ Не удалось сохранить trace: {exc}")
     else:
         # success: остановить без сохранения
         try:
             context.tracing.stop()
-        except Exception as exc:
+        except PlaywrightError as exc:
             print(f"⚠️ Не удалось сохранить trace: {exc}")
 
     context.close()
