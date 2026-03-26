@@ -261,8 +261,14 @@ class EventFlow:
 
             is_logged_in = login_page.wait_for_successful_login(timeout=20)
             if not is_logged_in:
+                # Иногда прямой логин на /v2/login не срабатывает для приглашенного пользователя.
+                # В этом случае делаем fallback через guest-auth модалку.
+                self._login_via_guest_auth_modal(guest_page, guest_url, username, password)
+                is_logged_in = login_page.wait_for_successful_login(timeout=20)
+
+            if not is_logged_in:
                 raise AssertionError(
-                    f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}"
+                    f"Не удалось залогиниться зарегистрированным пользователем после fallback: {guest_page.url}"
                 )
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
