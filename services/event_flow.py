@@ -257,27 +257,13 @@ class EventFlow:
                 login_page.enter_password(password)
                 login_page.click_login_button()
             except PlaywrightTimeoutError:
-                guest_page.goto(guest_url, wait_until="domcontentloaded")
-                GuestJoinPage(guest_page).click_already_have_account()
-                GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+                self._login_via_guest_auth_modal(guest_page, guest_url, username, password)
 
             is_logged_in = login_page.wait_for_successful_login(timeout=20)
             if not is_logged_in:
-                guest_page.goto(guest_url, wait_until="domcontentloaded")
-                try:
-                    GuestJoinPage(guest_page).click_already_have_account()
-                except AssertionError:
-                    pass
-
-                try:
-                    GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
-                except (PlaywrightTimeoutError, AssertionError):
-                    pass
-
-                is_logged_in = login_page.wait_for_successful_login(timeout=20)
-
-            if not is_logged_in:
-                raise AssertionError(f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}")
+                raise AssertionError(
+                    f"Не удалось залогиниться зарегистрированным пользователем: {guest_page.url}"
+                )
 
             guest_page.goto(guest_url, wait_until="domcontentloaded")
 
@@ -289,6 +275,13 @@ class EventFlow:
             return guest_page.url, joined
         finally:
             guest_context.close()
+
+    @staticmethod
+    def _login_via_guest_auth_modal(guest_page: Page, guest_url: str, username: str, password: str):
+        guest_page.goto(guest_url, wait_until="domcontentloaded")
+        guest_join_page = GuestJoinPage(guest_page)
+        guest_join_page.click_already_have_account()
+        GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
 
     def join_via_guest_link_as_registered_user_login_before_open_quest_link(self, guest_url: str, username: str, password: str):
         return self.join_via_guest_link_as_registered_user_login_before_open_guest_link(
@@ -392,11 +385,7 @@ class EventFlow:
         self.driver.wait_for_load_state("domcontentloaded")
         self.driver.wait_for_timeout(1000)
 
-        # если модалка уже успела появиться — закрываем
-        try:
-            self.event_page.close_event_start_popup_if_present()
-        except PlaywrightError:
-            pass
+        self._ensure_registration_link_controls_ready(target_event_id)
 
         self.event_page.click_copy_registration_link()
 
@@ -429,6 +418,32 @@ class EventFlow:
             f"Не удалось получить registration-link из буфера обмена: {registration_url}"
         )
 
+    def _ensure_registration_link_controls_ready(self, target_event_id: str):
+        button = self.driver.locator(self.event_page.REGISTRATION_LINK_COPY_BUTTON).first
+
+        for attempt in range(3):
+            self.driver.wait_for_load_state("domcontentloaded")
+            try:
+                self.driver.wait_for_load_state("networkidle", timeout=7_000)
+            except PlaywrightTimeoutError:
+                pass
+
+            self.event_page.close_event_start_popup_if_present()
+
+            try:
+                if button.is_visible():
+                    return
+            except PlaywrightError:
+                pass
+
+            # Если деталка не готова (список долго грузится), переоткрываем мероприятие из списка.
+            self.event_page.back_to_list()
+            self.open_event_from_list(target_event_id)
+
+        raise AssertionError(
+            f"Кнопка копирования registration-link не появилась для мероприятия {target_event_id}. URL={self.driver.url}"
+        )
+
     def register_via_registration_link_as_authorized_user(
             self,
             registration_url: str,
@@ -448,11 +463,8 @@ class EventFlow:
             login_page.click_login_button()
 
             guest_page.wait_for_load_state("domcontentloaded")
-
-            try:
+            if login_page.is_login_button_enabled():
                 login_page.click_login_button()
-            except PlaywrightError:
-                pass
 
             guest_page.wait_for_load_state("domcontentloaded")
 
@@ -480,11 +492,8 @@ class EventFlow:
             login_page.click_login_button()
 
             guest_page.wait_for_load_state("domcontentloaded")
-
-            try:
+            if login_page.is_login_button_enabled():
                 login_page.click_login_button()
-            except PlaywrightError:
-                pass
 
             guest_page.wait_for_load_state("domcontentloaded")
             guest_page.wait_for_timeout(2000)

@@ -9,6 +9,7 @@ class GuestJoinPage:
         "[e2e-id='auth-info__name-input']",
         "input[e2e-id='auth-info__name-input']",
         "input[e2e-id*='guest-name']",
+        "input[placeholder*='Ваше имя']",
         "input[placeholder*='Введите своё имя']",
         "input[placeholder*='Имя']",
         "input[placeholder*='Name']",
@@ -34,6 +35,8 @@ class GuestJoinPage:
     POST_MAIL_JOIN_BUTTON_LOCATORS = [
         "[e2e-id='auth-info__join-button']",
         "button[e2e-id='auth-info__join-button']",
+        "[imarker='okButton']",
+        "button[imarker='okButton']",
         "button:has-text('Войти')",
         "button:has-text('Продолжить')",
         "button:has-text('Присоединиться')",
@@ -61,6 +64,11 @@ class GuestJoinPage:
                 close_meeting_start_popup_if_present(self.page)
             except PlaywrightError:
                 pass
+            for frame in self.page.frames:
+                try:
+                    close_meeting_start_popup_if_present(frame)
+                except PlaywrightError:
+                    continue
             for selector in selectors:
                 try:
                     locator = self.page.locator(selector)
