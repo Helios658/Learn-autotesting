@@ -261,8 +261,6 @@ class EventFlow:
 
             is_logged_in = login_page.wait_for_successful_login(timeout=20)
             if not is_logged_in:
-                # Иногда прямой логин на /v2/login не срабатывает для приглашенного пользователя.
-                # В этом случае делаем fallback через guest-auth модалку.
                 self._login_via_guest_auth_modal(guest_page, guest_url, username, password)
                 is_logged_in = login_page.wait_for_successful_login(timeout=20)
 
@@ -286,7 +284,11 @@ class EventFlow:
     def _login_via_guest_auth_modal(guest_page: Page, guest_url: str, username: str, password: str):
         guest_page.goto(guest_url, wait_until="domcontentloaded")
         guest_join_page = GuestJoinPage(guest_page)
-        guest_join_page.click_already_have_account()
+        try:
+            guest_join_page.click_already_have_account()
+        except AssertionError:
+            pass
+
         GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
 
     def join_via_guest_link_as_registered_user_login_before_open_quest_link(self, guest_url: str, username: str, password: str):

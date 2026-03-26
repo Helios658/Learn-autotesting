@@ -2,7 +2,7 @@ from config import config
 from pages.base_page import BasePage
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-
+import re
 
 class ChatPage(BasePage):
     # Навигация
@@ -76,21 +76,39 @@ class ChatPage(BasePage):
         normalized_target = self._normalize_chat_text(user_text)
         local_part = normalized_target.split("@")[0] if "@" in normalized_target else normalized_target
 
-        # Правильный и стабильный путь для CI: фильтровать locator, а не парсить inner_text построчно.
-        direct_match = rows.filter(has_text=user_text).first
-        if direct_match.count() > 0 and direct_match.is_visible():
-            self.safe_click(direct_match)
-            return
+        exact_email_candidates = []
+        contains_email_candidates = []
+        local_part_candidates = []
 
-        email_match = rows.filter(has_text=normalized_target).first
-        if email_match.count() > 0 and email_match.is_visible():
-            self.safe_click(email_match)
-            return
+        total = rows.count()
+        for idx in range(total):
+            row = rows.nth(idx)
+            try:
+                if not row.is_visible():
+                    continue
+                row_text = self._normalize_chat_text(row.inner_text(timeout=1000))
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
 
-        if local_part and local_part != normalized_target:
-            local_part_match = rows.filter(has_text=local_part).first
-            if local_part_match.count() > 0 and local_part_match.is_visible():
-                self.safe_click(local_part_match)
+            if not row_text:
+                continue
+
+            if normalized_target and row_text == normalized_target:
+                exact_email_candidates.append(row)
+                continue
+
+            if normalized_target and re.search(rf"(^|\W){re.escape(normalized_target)}($|\W)", row_text):
+                contains_email_candidates.append(row)
+                continue
+
+            if local_part and local_part != normalized_target and re.search(
+                    rf"(^|\W){re.escape(local_part)}($|\W)", row_text
+            ):
+                local_part_candidates.append(row)
+
+        for candidates in (exact_email_candidates, contains_email_candidates, local_part_candidates):
+            if candidates:
+                self.safe_click(candidates[0])
                 return
 
         raise AssertionError(
