@@ -50,7 +50,7 @@ def test_31_send_and_receive_text_message_p2p(two_users):
     )
 
     chat_a1.open()
-    chat_a1.open_existing_p2p_chat_via_search("Кот Админ")
+    chat_a1.open_existing_p2p_chat_via_search(config.ADMIN_EMAIL)
 
     assert chat_a1.wait_for_message(message_text), (
         f"A1 не получил сообщение: {message_text}"

@@ -73,28 +73,29 @@ class ChatPage(BasePage):
         rows = container.locator(self.CREATE_CHAT_CONTACT)
 
         rows.first.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        count = rows.count()
-        normalized_target = user_text.strip().lower()
+        normalized_target = self._normalize_chat_text(user_text)
+        local_part = normalized_target.split("@")[0] if "@" in normalized_target else normalized_target
 
-        for i in range(count):
-            row = rows.nth(i)
-            try:
-                if not row.is_visible():
-                    continue
+        # Правильный и стабильный путь для CI: фильтровать locator, а не парсить inner_text построчно.
+        direct_match = rows.filter(has_text=user_text).first
+        if direct_match.count() > 0 and direct_match.is_visible():
+            self.safe_click(direct_match)
+            return
 
-                text = row.inner_text().strip()
-                lines = [line.strip().lower() for line in text.splitlines() if line.strip()]
+        email_match = rows.filter(has_text=normalized_target).first
+        if email_match.count() > 0 and email_match.is_visible():
+            self.safe_click(email_match)
+            return
 
-                print(f"[new chat result {i}] {text!r}")
+        if local_part and local_part != normalized_target:
+            local_part_match = rows.filter(has_text=local_part).first
+            if local_part_match.count() > 0 and local_part_match.is_visible():
+                self.safe_click(local_part_match)
+                return
 
-                if normalized_target in lines or normalized_target in text.lower():
-                    self.safe_click(row)
-                    return
-
-            except PlaywrightTimeoutError:
-                continue
-
-        raise AssertionError(f"Не найден пользователь в результатах создания чата: {user_text}")
+        raise AssertionError(
+            f"Не найден пользователь в результатах создания чата: {user_text}"
+        )
 
     def create_or_open_p2p_chat(self, user_text: str):
         self.click_create_chat()
@@ -103,6 +104,10 @@ class ChatPage(BasePage):
 
         header = self.page.locator(self.CHAT_HEADER).first
         header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+    @staticmethod
+    def _normalize_chat_text(value: str) -> str:
+        return (value or "").strip().strip('"').strip("'").lower()
 
     # =========================
     # Открытие существующего чата через поиск по списку
