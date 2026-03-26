@@ -284,12 +284,33 @@ class EventFlow:
     def _login_via_guest_auth_modal(guest_page: Page, guest_url: str, username: str, password: str):
         guest_page.goto(guest_url, wait_until="domcontentloaded")
         guest_join_page = GuestJoinPage(guest_page)
+        if guest_join_page.is_in_conference(timeout_ms=2_000):
+            return
+
         try:
             guest_join_page.click_already_have_account()
         except AssertionError:
-            pass
+            # Для ссылок из письма иногда сначала нужно нажать "Войти/Продолжить".
+            try:
+                guest_join_page.click_join_after_mail_link()
+            except (AssertionError, PlaywrightError):
+                pass
 
-        GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+            # Если кнопка аккаунта появилась после промежуточного шага — кликаем.
+            try:
+                guest_join_page.click_already_have_account()
+            except AssertionError:
+                pass
+
+        try:
+            GuestAuthModalPage(guest_page).wait_opened().login(username=username, password=password)
+            return
+        except AssertionError:
+            # Последний fallback: страница могла перейти на полноценный /v2/login.
+            login_page = LoginPage(guest_page)
+            login_page.enter_username(username)
+            login_page.enter_password(password)
+            login_page.click_login_button()
 
     def join_via_guest_link_as_registered_user_login_before_open_quest_link(self, guest_url: str, username: str, password: str):
         return self.join_via_guest_link_as_registered_user_login_before_open_guest_link(

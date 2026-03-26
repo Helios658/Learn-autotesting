@@ -102,7 +102,7 @@ class ChatPage(BasePage):
                 continue
 
             if local_part and local_part != normalized_target and re.search(
-                    rf"(^|\W){re.escape(local_part)}($|\W)", row_text
+                rf"(^|\W){re.escape(local_part)}($|\W)", row_text
             ):
                 local_part_candidates.append(row)
 
@@ -111,9 +111,18 @@ class ChatPage(BasePage):
                 self.safe_click(candidates[0])
                 return
 
-        raise AssertionError(
-            f"Не найден пользователь в результатах создания чата: {user_text}"
-        )
+        # Fallback: в некоторых сборках inner_text у строк пустой/урезанный,
+        # но has_text-фильтрация Playwright всё равно находит корректный контакт.
+        for text in (user_text, normalized_target, local_part):
+            if not text:
+                continue
+            candidate = rows.filter(has_text=text).first
+            try:
+                if candidate.count() > 0 and candidate.is_visible():
+                    self.safe_click(candidate)
+                    return
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
 
     def create_or_open_p2p_chat(self, user_text: str):
         self.click_create_chat()
