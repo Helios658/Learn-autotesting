@@ -11,7 +11,7 @@ cache:
   paths:
     - .cache/pip
 
-.e2e_job_template:
+full_e2e_tests:
   stage: test
   image: mcr.microsoft.com/playwright/python:v1.55.0-jammy
   tags:
@@ -43,7 +43,6 @@ cache:
   script:
     - |
       TEST_EXIT=0
-      PYTEST_CMD="pytest -v --headless --junitxml=report.xml --alluredir=allure-results ${PYTEST_TARGETS}"
 
       if [ -n "${ALLURE_ENDPOINT}" ] && [ -n "${ALLURE_TOKEN}" ] && [ -n "${ALLURE_PROJECT_ID}" ]; then
         curl -sSL https://github.com/allure-framework/allurectl/releases/latest/download/allurectl_linux_amd64 -o /usr/local/bin/allurectl
@@ -53,7 +52,7 @@ cache:
         export ALLURE_LAUNCH_AUTO_CLOSE=true
 
         set -o pipefail
-        allurectl watch -- bash -lc "${PYTEST_CMD}" 2>&1 | tee allure_watch.log
+        allurectl watch -- pytest -v --headless --junitxml=report.xml --alluredir=allure-results 2>&1 | tee allure_watch.log
         TEST_EXIT=${PIPESTATUS[0]}
 
         LAUNCH_ID=$(sed -n 's/.*Launch \[\([0-9]\+\)\].*/\1/p' allure_watch.log | tail -n1)
@@ -68,7 +67,7 @@ cache:
         fi
       else
         echo "ALLURE_ENDPOINT/ALLURE_TOKEN/ALLURE_PROJECT_ID not set -> run pytest without TestOps upload"
-        bash -lc "${PYTEST_CMD}" || TEST_EXIT=$?
+        pytest -v --headless --junitxml=report.xml --alluredir=allure-results || TEST_EXIT=$?
       fi
 
       exit $TEST_EXIT
@@ -82,16 +81,3 @@ cache:
       - report.xml
       - allure-results/
       - artifacts/
-
-full_e2e_tests:
-  extends: .e2e_job_template
-  variables:
-    PYTEST_TARGETS: ""
-
-focused_debug_tests:
-  extends: .e2e_job_template
-  variables:
-    PYTEST_TARGETS: "tests/test_chat.py::test_30_create_or_open_p2p_chat_with_test_user2 tests/test_links.py::test_23_link_for_the_invited"
-  rules:
-    - when: manual
-      allow_failure: true
