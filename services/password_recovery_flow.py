@@ -25,9 +25,14 @@ class PasswordRecoveryFlow:
         # 3. Запрос восстановления
         self.recovery_page.request_password_recovery(config.USER_EMAIL)
 
-        # 4. Забираем письмо и ссылку
-        self.mail_page.login()
-        reset_link = self.mail_page.get_password_reset_link(wait_for_email=True)
+        # 4. Забираем письмо и ссылку в отдельной вкладке, чтобы не терять состояние основной страницы
+        mail_browser_page = self.driver.context.new_page()
+        mail_page = MailPage(mail_browser_page)
+        try:
+            mail_page.login()
+            reset_link = mail_page.get_password_reset_link(wait_for_email=True)
+        finally:
+            mail_browser_page.close()
 
         # 5. Переход по ссылке
         self.driver.goto(reset_link)

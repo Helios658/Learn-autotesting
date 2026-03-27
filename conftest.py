@@ -7,7 +7,7 @@ from utils.artifacts import save_artifacts
 from config import config
 import socket
 from playwright.sync_api import Error as PlaywrightError
-from pages.mail_page import MailPage, InvitationLinkNotFoundError
+
 load_dotenv()
 
 

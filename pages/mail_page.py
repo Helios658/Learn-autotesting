@@ -63,6 +63,10 @@ class MailPage:
             "Login confirmation",
             "Security code",
         ]
+        self.INVITATION_SUBJECT_KEYWORDS = [
+            "Приглашение на мероприятие",
+            "Event invitation",
+        ]
         self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
         self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
 
@@ -111,6 +115,16 @@ class MailPage:
             pass
 
         return self._find_email_subject_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
+
+    def _find_invitation_email_subject(self):
+        try:
+            subject = self._first_visible(self.page.locator(self.INVITE_EMAIL_SUBJECT))
+            if subject is not None:
+                return subject
+        except PlaywrightError:
+            pass
+
+        return self._find_email_subject_by_keywords(self.INVITATION_SUBJECT_KEYWORDS)
 
     def _find_email_subject_by_keywords(self, keywords):
         for keyword in keywords:
@@ -467,31 +481,39 @@ class MailPage:
 
         return self
 
-    def wait_for_recovery_email(self, timeout=60):
-        print(f"⏳ Ждем письмо (макс {timeout} сек)...")
+    def _wait_for_email(self, finder, timeout=60, label="письмо"):
+        print(f"⏳ Ждем {label} (макс {timeout} сек)...")
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.page.reload(wait_until="domcontentloaded")
-            if self._find_recovery_email_subject() is not None:
-                print("✅ Письмо найдено!")
+            if finder() is not None:
+                print(f"✅ {label.capitalize()} найдено!")
                 return True
             self.page.wait_for_timeout(2000)
 
-        print(f"❌ Письмо не пришло за {timeout} секунд")
+        print(f"❌ {label.capitalize()} не пришло за {timeout} секунд")
         return False
+
+    def wait_for_recovery_email(self, timeout=60):
+        return self._wait_for_email(
+            finder=self._find_recovery_email_subject,
+            timeout=timeout,
+            label="письмо восстановления",
+        )
 
     def wait_for_invitation_email(self, timeout=60):
-        print(f"⏳ Ждем письмо с приглашением (макс {timeout} сек)...")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.page.reload(wait_until="domcontentloaded")
-            if self.page.locator(self.INVITE_EMAIL_SUBJECT).count() > 0:
-                print("✅ Письмо-приглашение найдено!")
-                return True
-            self.page.wait_for_timeout(2000)
+        return self._wait_for_email(
+            finder=self._find_invitation_email_subject,
+            timeout=timeout,
+            label="письмо-приглашение",
+        )
 
-        print(f"❌ Письмо-приглашение не пришло за {timeout} секунд")
-        return False
+    def wait_for_2fa_code_email(self, timeout=60):
+        return self._wait_for_email(
+            finder=self._find_2fa_email_subject,
+            timeout=timeout,
+            label="письмо с кодом 2FA",
+        )
 
     def get_password_reset_link(self, wait_for_email=True):
         if wait_for_email and not self.wait_for_recovery_email():
@@ -522,7 +544,9 @@ class MailPage:
         if wait_for_email and not self.wait_for_invitation_email():
             raise InvitationEmailNotReceivedError("Письмо с приглашением не пришло")
 
-        subject = self.page.locator(self.INVITE_EMAIL_SUBJECT).first
+        subject = self._find_invitation_email_subject()
+        if subject is None:
+            raise InvitationEmailNotReceivedError("Письмо с приглашением не найдено в списке")
         subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self._open_email_by_subject(subject)
         self.page.wait_for_timeout(1500)
@@ -566,19 +590,6 @@ class MailPage:
                 pass
 
         return None
-
-    def wait_for_2fa_code_email(self, timeout=60):
-        print(f"⏳ Ждем письмо (макс {timeout} сек)...")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.page.reload(wait_until="domcontentloaded")
-            if self._find_2fa_email_subject() is not None:
-                print("✅ Письмо найдено!")
-                return True
-            self.page.wait_for_timeout(2000)
-
-        print(f"❌ Письмо не пришло за {timeout} секунд")
-        return False
 
     def open_2fa_email(self, wait_for_email=True):
         if wait_for_email and not self.wait_for_2fa_code_email():
