@@ -3,7 +3,7 @@ import pytest
 from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
-from pages.mail_page import MailPage
+from pages.mail_page import MailPage, InvitationLinkNotFoundError
 from pages.guest_join_page import GuestJoinPage
 
 
@@ -506,5 +506,95 @@ def test_27_registration_link_authorized_user(driver):
             f"После перехода по ссылке из письма получен неожиданный URL: {final_url}"
         )
 
+    finally:
+        guest_context.close()
+
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("32")
+def test_32_sid_link_for_unregistered_invited_user(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    invited_email = config.TEST_UNREGISTED_USER_EMAIL
+    assert invited_email, "Не задан TEST_UNREGISTED_USER_EMAIL для проверки sid-ссылки"
+
+    flow = EventFlow(driver)
+    event_id = flow.create_event(return_to_list=False)
+    flow.add_participant_in_event(invited_email)
+
+    assert event_id in (driver.url or ""), (
+        f"После приглашения пользователя потеряли текущую конференцию: {driver.url}"
+    )
+
+    mail_page = MailPage(driver)
+    mail_page.login()
+    mail_page.open_invitation_email(wait_for_email=True)
+    sid_link = mail_page.get_invitation_sid_link()
+    assert "sid=" in sid_link.lower(), f"Не удалось извлечь sid-ссылку приглашения: {sid_link}"
+
+    guest_context, guest_page = flow.open_guest_link_in_incognito(sid_link)
+    try:
+        GuestJoinPage(guest_page).click_join_after_mail_link()
+        guest_page.wait_for_load_state("domcontentloaded")
+        final_url = guest_page.url
+    finally:
+        guest_context.close()
+
+    is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+    is_join_url = "/v2/join?" in final_url and "token=" in final_url
+    assert is_conference_url or is_join_url, (
+        f"После входа по sid-ссылке получен неожиданный URL: {final_url}"
+    )
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("33")
+def test_33_registration_link_unregistered_user_via_name_step(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    flow = EventFlow(driver)
+    invited_email = config.TEST_UNREGISTED_USER_EMAIL
+    assert invited_email, "Не задан TEST_UNREGISTED_USER_EMAIL для регистрации незарегистрированного пользователя"
+
+    event_id = flow.create_event_draft_with_registration(return_to_list=False)
+    registration_url = flow.get_registration_link_for_event(event_id)
+
+    assert registration_url, "Не получили ссылку регистрации"
+    assert registration_url.startswith("http") or "join:" in registration_url, (
+        f"Некорректная ссылка регистрации: {registration_url}"
+    )
+
+    guest_context, guest_page = flow.submit_registration_link_without_login(
+        registration_url=registration_url,
+        email=invited_email,
+        name="Auto Unregistered",
+    )
+
+    try:
+        mail_page = MailPage(driver)
+        mail_page.login()
+        mail_page.open_invitation_email(wait_for_email=True)
+
+        try:
+            invited_link = mail_page.get_invitation_sid_link()
+        except InvitationLinkNotFoundError:
+            invited_link = mail_page.get_invitation_join_link()
+
+        assert invited_link.startswith("http"), f"Не удалось извлечь ссылку входа из письма: {invited_link}"
+
+        guest_page.goto(invited_link, wait_until="domcontentloaded")
+        guest_page.wait_for_load_state("domcontentloaded")
+        guest_page.wait_for_timeout(1500)
+
+        guest_join_page = GuestJoinPage(guest_page)
+        is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=20_000)
+
+        final_url = guest_page.url
+        is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+        is_join_url = "/v2/join?" in final_url and "token=" in final_url
+
+        assert is_joined, f"Не удалось завершить вход по ссылке из письма после регистрации. URL: {final_url}"
+        assert is_conference_url or is_join_url, (
+            f"После перехода по ссылке из письма получен неожиданный URL: {final_url}"
+        )
     finally:
         guest_context.close()

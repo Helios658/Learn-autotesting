@@ -34,6 +34,7 @@ class MailPage:
         r"https?://[^\s<>\"']+#join:[a-zA-Z]"
         r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
     )
+    SID_LINK_PATTERN = r"https?://[^\s<>\"']*[\?&]sid=[^\s<>\"'&]+[^\s<>\"']*"
 
     def __init__(self, page):
         self.page = page
@@ -606,3 +607,62 @@ class MailPage:
             self.page.wait_for_timeout(500)
 
         raise Code2FANotFoundError("Код 2FA не найден в письме")
+
+    def _extract_sid_link_from_text(self, text):
+        if not text:
+            return None
+
+        variants = [text, unescape(text), unquote(unescape(text))]
+        for variant in variants:
+            match = re.search(self.SID_LINK_PATTERN, variant, flags=re.IGNORECASE)
+            if not match:
+                continue
+            link = unescape(match.group(0)).rstrip("\"'.,;:!?)>]")
+            if "sid=" in link.lower():
+                return link
+        return None
+
+    def _extract_sid_link_from_page_or_frames(self):
+        link = self._extract_sid_link_from_text(self.page.content())
+        if link:
+            return link
+
+        hrefs = self.page.evaluate(
+            """
+            () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
+            """
+        )
+        for href in hrefs:
+            link = self._extract_sid_link_from_text(href)
+            if link:
+                return link
+
+        for frame in self.page.frames:
+            try:
+                link = self._extract_sid_link_from_text(frame.content())
+                if link:
+                    return link
+                frame_hrefs = frame.evaluate(
+                    """
+                    () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
+                    """
+                )
+                for href in frame_hrefs:
+                    link = self._extract_sid_link_from_text(href)
+                    if link:
+                        return link
+            except PlaywrightError:
+                continue
+
+        return None
+
+    def get_invitation_sid_link(self):
+        deadline = time.time() + config.EXPLICIT_WAIT
+        while time.time() < deadline:
+            sid_link = self._extract_sid_link_from_page_or_frames()
+            if sid_link:
+                print(f"✅ Нашли sid-ссылку приглашения: {sid_link}")
+                return sid_link
+            self.page.wait_for_timeout(500)
+
+        raise InvitationLinkNotFoundError("Не нашли sid-ссылку приглашения в уже открытом письме")

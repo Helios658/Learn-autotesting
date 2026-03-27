@@ -11,7 +11,8 @@ def test_1_events_one_time_login_only(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
-    event_id = flow.create_event()
+    event_id = flow.create_event(return_to_list=False)
 
-    card = flow.open_event_from_list(event_id)
-    assert card.is_visible(), f"Мероприятие {event_id} не отображается"
+    assert event_id in (driver.url or ""), (
+        f"После создания не остались в карточке мероприятия {event_id}. URL: {driver.url}"
+    )

@@ -65,6 +65,9 @@ class Config:
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
     ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 
+    # Unregistered invited user (no password flow via sid-link from email)
+    TEST_UNREGISTED_USER_EMAIL = os.getenv('TEST_UNREGISTED_USER_EMAIL')
+
     #LDAP
     TEST_LDAP_USER_EMAIL = os.getenv('TEST_LDAP_USER_EMAIL')
     TEST_LDAP_USER_PASSWORD = os.getenv('TEST_LDAP_USER_PASSWORD')

@@ -465,7 +465,6 @@ class EventFlow:
             except PlaywrightError:
                 pass
 
-            # Если деталка не готова (список долго грузится), переоткрываем мероприятие из списка.
             self.event_page.back_to_list()
             self.open_event_from_list(target_event_id)
 
@@ -531,3 +530,24 @@ class EventFlow:
         except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
             guest_context.close()
             raise
+
+    def submit_registration_link_without_login(
+            self,
+            registration_url: str,
+            email: str,
+            name: str = "Auto User",
+    ):
+        guest_context, guest_page = self.open_guest_link_in_incognito(registration_url)
+        try:
+            registration_page = RegistrationPage(guest_page)
+            registration_page.enter_email(email)
+            registration_page.click_register()
+            registration_page.complete_name_step(name=name)
+
+            guest_page.wait_for_load_state("domcontentloaded")
+            guest_page.wait_for_timeout(1500)
+            return guest_context, guest_page
+        except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
+            guest_context.close()
+            raise
+

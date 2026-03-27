@@ -16,11 +16,28 @@ class RegistrationPage:
         "button:has-text('Зарегистрироваться')",
     ]
 
+    REGISTER_MODAL_LOCATORS = [
+        ".register-form",
+        "app-self-registration",
+        ".iva-core-modal-window",
+    ]
+
+    REGISTER_MODAL_SUBMIT_LOCATORS = [
+        "button.register-form__submit-button",
+        "button:has-text('Зарегистрироваться')",
+    ]
+
     SUCCESS_INDICATORS = [
         ".conference-session",
         "[ivamover='conference-session-pip']",
         "video",
         "[e2e-id*='conference']",
+    ]
+
+    NAME_INPUT_LOCATORS = [
+        "input[placeholder='Введите ваше имя']",
+        "input[placeholder*='имя' i]",
+        "input[maxlength='255'][type='text']",
     ]
 
     def __init__(self, page):
@@ -51,6 +68,45 @@ class RegistrationPage:
 
     def enter_email(self, email: str):
         self._find_visible(self.EMAIL_INPUT_LOCATORS, timeout_ms=12_000).fill(email)
+
+    def enter_name(self, name: str):
+        self._find_visible(self.NAME_INPUT_LOCATORS, timeout_ms=12_000).fill(name)
+
+    def click_register_after_name(self):
+        register_btn = None
+        for modal_selector in self.REGISTER_MODAL_LOCATORS:
+            try:
+                modal = self.page.locator(modal_selector).first
+                if modal.count() == 0 or not modal.is_visible():
+                    continue
+
+                for btn_selector in self.REGISTER_MODAL_SUBMIT_LOCATORS:
+                    btn = modal.locator(btn_selector).first
+                    if btn.count() > 0 and btn.is_visible():
+                        register_btn = btn
+                        break
+                if register_btn is not None:
+                    break
+            except PlaywrightError:
+                continue
+
+        if register_btn is None:
+            register_btn = self._find_visible(self.REGISTER_MODAL_SUBMIT_LOCATORS, timeout_ms=10_000)
+
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            try:
+                if register_btn.is_enabled():
+                    break
+            except PlaywrightError:
+                pass
+            self.page.wait_for_timeout(250)
+
+        register_btn.click()
+
+    def complete_name_step(self, name: str = "Auto User"):
+        self.enter_name(name)
+        self.click_register_after_name()
 
     def click_register(self):
         self._find_visible(self.REGISTER_BUTTON_LOCATORS, timeout_ms=10_000).click()

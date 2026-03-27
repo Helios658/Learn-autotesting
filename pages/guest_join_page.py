@@ -1,7 +1,7 @@
 import re
 import time
 from playwright.sync_api import Error as PlaywrightError
-from utils.ui_interruptions import close_meeting_start_popup_if_present
+from utils.ui_interruptions import close_meeting_start_popup_if_present, close_need_play_modal_if_present
 
 
 class GuestJoinPage:
@@ -190,6 +190,11 @@ class GuestJoinPage:
             "video",
             "[e2e-id*='conference']",
         ]
+
+        try:
+            close_need_play_modal_if_present(self.page)
+        except PlaywrightError:
+            pass
 
         try:
             self._find_visible(conference_locators, timeout_ms=timeout_ms)
