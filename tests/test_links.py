@@ -1,11 +1,11 @@
 import time
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from config import config
 from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
-from pages.mail_page import MailPage, InvitationLinkNotFoundError
+from pages.mail_page import InvitationLinkNotFoundError
 from pages.guest_join_page import GuestJoinPage
-from playwright.sync_api import Error as PlaywrightError
 
 
 @pytest.mark.smoke
@@ -346,7 +346,7 @@ def test_22_guest_link_registered_adfs_with_authorization(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("23")
-def test_23_link_for_the_invited(driver):
+def test_23_link_for_the_invited(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     invited_email = config.USER_EMAIL
@@ -362,8 +362,7 @@ def test_23_link_for_the_invited(driver):
         f"После приглашения участника потеряли текущую конференцию: {driver.url}"
     )
 
-    mail_page = MailPage(driver)
-    mail_page.login()
+    mail_page = mail_page_session
     mail_page.open_invitation_email(wait_for_email=True)
     invited_join_link = mail_page.get_invitation_join_link()
     assert "join:" in invited_join_link, f"Не удалось извлечь ссылку приглашения: {invited_join_link}"
@@ -462,7 +461,7 @@ def test_26_ticket_link_guest_user_open_link_first(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("27")
-def test_27_registration_link_authorized_user(driver):
+def test_27_registration_link_authorized_user(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -482,8 +481,7 @@ def test_27_registration_link_authorized_user(driver):
     )
 
     try:
-        mail_page = MailPage(driver)
-        mail_page.login()
+        mail_page = mail_page_session
         mail_page.open_invitation_email(wait_for_email=True)
         invited_join_link = mail_page.get_invitation_join_link()
 
@@ -513,7 +511,7 @@ def test_27_registration_link_authorized_user(driver):
 
 @pytest.mark.buildtest
 @pytest.mark.testcase("32")
-def test_32_sid_link_for_unregistered_invited_user(driver):
+def test_32_sid_link_for_unregistered_invited_user(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     invited_email = config.TEST_UNREGISTED_USER_EMAIL
@@ -527,8 +525,7 @@ def test_32_sid_link_for_unregistered_invited_user(driver):
         f"После приглашения пользователя потеряли текущую конференцию: {driver.url}"
     )
 
-    mail_page = MailPage(driver)
-    mail_page.login()
+    mail_page = mail_page_session
     mail_page.open_invitation_email(wait_for_email=True)
     sid_link = mail_page.get_invitation_sid_link()
     assert "sid=" in sid_link.lower(), f"Не удалось извлечь sid-ссылку приглашения: {sid_link}"
@@ -549,7 +546,7 @@ def test_32_sid_link_for_unregistered_invited_user(driver):
 
 @pytest.mark.buildtest
 @pytest.mark.testcase("33")
-def test_33_registration_link_unregistered_user_via_name_step(driver):
+def test_33_registration_link_unregistered_user_via_name_step(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
@@ -572,8 +569,7 @@ def test_33_registration_link_unregistered_user_via_name_step(driver):
     )
 
     try:
-        mail_page = MailPage(driver)
-        mail_page.login()
+        mail_page = mail_page_session
         mail_page.open_invitation_email(wait_for_email=True)
 
         try:
