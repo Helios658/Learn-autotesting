@@ -149,10 +149,15 @@ class EventPage(BasePage):
         self.safe_click(self.CLOSE_MODAL_BUTTON)
 
     def back_to_list(self):
+        hamburger = self.page.locator(self.HAMBURGER_BUTTON).first
         try:
-            self.page.locator(self.HAMBURGER_BUTTON).first.click(timeout=5000)
+            if hamburger.count() > 0 and hamburger.is_visible():
+                try:
+                    hamburger.click(timeout=5000)
+                except PlaywrightError:
+                    hamburger.click(force=True, timeout=3000)
         except PlaywrightError:
-            self.page.locator(self.HAMBURGER_BUTTON).first.click(force=True)
+            pass
 
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/conferences", wait_until="domcontentloaded")
         self._disable_overlay_pointer_events()
@@ -161,6 +166,7 @@ class EventPage(BasePage):
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
         return self
+
 
     def _disable_overlay_pointer_events(self):
         self.page.evaluate(
@@ -589,10 +595,27 @@ class EventPage(BasePage):
         self.safe_click(section)
 
     def enable_registration_form(self):
-        self.open_join_settings()
+        checkbox = None
 
-        checkbox = self.page.locator("input[name='registrationForm']").first
-        checkbox.wait_for(state="attached", timeout=config.EXPLICIT_WAIT * 1000)
+        for _ in range(3):
+            self.open_join_settings()
+
+            for selector in self.REGISTRATION_FORM_CHECKBOX:
+                candidate = self.page.locator(selector).first
+                try:
+                    if candidate.count() > 0:
+                        candidate.wait_for(state="attached", timeout=5000)
+                        checkbox = candidate
+                        break
+                except PlaywrightError:
+                    continue
+
+            if checkbox is not None:
+                break
+            self.page.wait_for_timeout(800)
+
+        if checkbox is None:
+            raise AssertionError("Не нашли чекбокс registrationForm после открытия настроек входа")
 
         try:
             if checkbox.is_checked():

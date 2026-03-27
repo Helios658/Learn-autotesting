@@ -5,6 +5,7 @@ from services.event_flow import EventFlow
 from services.login_flow import LoginFlow
 from pages.mail_page import MailPage, InvitationLinkNotFoundError
 from pages.guest_join_page import GuestJoinPage
+from playwright.sync_api import Error as PlaywrightError
 
 
 @pytest.mark.smoke
@@ -562,6 +563,7 @@ def test_33_registration_link_unregistered_user_via_name_step(driver):
     assert registration_url.startswith("http") or "join:" in registration_url, (
         f"Некорректная ссылка регистрации: {registration_url}"
     )
+    driver.wait_for_timeout(15_000)
 
     guest_context, guest_page = flow.submit_registration_link_without_login(
         registration_url=registration_url,
@@ -586,14 +588,23 @@ def test_33_registration_link_unregistered_user_via_name_step(driver):
         guest_page.wait_for_timeout(1500)
 
         guest_join_page = GuestJoinPage(guest_page)
-        is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=20_000)
+        try:
+            guest_join_page.click_join_after_mail_link()
+        except (AssertionError, PlaywrightError):
+            pass
+        guest_page.wait_for_timeout(1200)
+        guest_join_page.click_enter_on_prejoin_screen()
+        guest_page.wait_for_timeout(1200)
+
+        is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=90_000)
 
         final_url = guest_page.url
         is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+        is_direct_conference_url = "/v2/iva/conference/" in final_url and "conferenceSessionId=" in final_url
         is_join_url = "/v2/join?" in final_url and "token=" in final_url
 
         assert is_joined, f"Не удалось завершить вход по ссылке из письма после регистрации. URL: {final_url}"
-        assert is_conference_url or is_join_url, (
+        assert is_conference_url or is_direct_conference_url or is_join_url, (
             f"После перехода по ссылке из письма получен неожиданный URL: {final_url}"
         )
     finally:

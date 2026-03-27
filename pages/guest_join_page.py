@@ -44,6 +44,19 @@ class GuestJoinPage:
         "button:has-text('Join')",
         "button:has-text('Continue')",
     ]
+
+    PREJOIN_ENTER_BUTTON_LOCATORS = [
+        "button:has-text('Войти')",
+        "button:has-text('Присоединиться')",
+        "button:has-text('Подключиться')",
+        "button:has-text('Join')",
+    ]
+    PREJOIN_EXIT_BUTTON_LOCATORS = [
+        "button:has-text('Выйти')",
+        "button:has-text('Exit')",
+        "button:has-text('Leave')",
+    ]
+
     OVERLAY_CLOSE_LOCATORS = [
         "button[aria-label='Закрыть']",
         "button[aria-label='Close']",
@@ -237,6 +250,14 @@ class GuestJoinPage:
             except PlaywrightError:
                 pass
             try:
+                self.click_join_after_mail_link()
+            except (AssertionError, PlaywrightError):
+                pass
+            try:
+                self.click_enter_on_prejoin_screen()
+            except (AssertionError, PlaywrightError):
+                pass
+            try:
                 self.click_join()
             except (AssertionError, PlaywrightError):
                 pass
@@ -244,6 +265,32 @@ class GuestJoinPage:
             current_url = self.page.url or ""
             if self._is_join_result_url(current_url):
                 return True
+
+        return False
+
+    def click_enter_on_prejoin_screen(self) -> bool:
+        # На экране проверки оборудования одновременно есть "Войти" и "Выйти".
+        # Явно кликаем по "Войти" и не нажимаем "Выйти".
+        for selector in self.PREJOIN_ENTER_BUTTON_LOCATORS:
+            try:
+                locator = self.page.locator(selector).first
+                if locator.count() > 0 and locator.is_visible() and locator.is_enabled():
+                    text = (locator.inner_text() or "").strip().lower()
+                    if any(word in text for word in ("выйти", "exit", "leave")):
+                        continue
+                    locator.click(timeout=3000)
+                    self.page.wait_for_timeout(700)
+                    return True
+            except PlaywrightError:
+                continue
+
+        for selector in self.PREJOIN_EXIT_BUTTON_LOCATORS:
+            try:
+                exit_btn = self.page.locator(selector).first
+                if exit_btn.count() > 0 and exit_btn.is_visible():
+                    break
+            except PlaywrightError:
+                continue
 
         return False
 
@@ -263,5 +310,6 @@ class GuestJoinPage:
         if not url:
             return False
         is_conference_url = "/v2/iva/home/conferences" in url and "conferenceSessionId=" in url
+        is_direct_conference_url = "/v2/iva/conference/" in url and "conferenceSessionId=" in url
         is_join_token_url = "/v2/join?token=" in url
-        return is_conference_url or is_join_token_url
+        return is_conference_url or is_direct_conference_url or is_join_token_url
