@@ -67,6 +67,17 @@ class MailPage:
         self._imap_last_2fa_message = None
 
     @staticmethod
+    def _shorten(text: str, limit: int = 160) -> str:
+        compact = re.sub(r"\s+", " ", text or "").strip()
+        if len(compact) <= limit:
+            return compact
+        return f"{compact[:limit]}..."
+
+    def _debug(self, message: str):
+        if config.MAIL_IMAP_DEBUG:
+            print(f"📬 [IMAP DEBUG] {message}")
+
+    @staticmethod
     def _decode_mime_header(value: str) -> str:
         if not value:
             return ""
@@ -291,7 +302,11 @@ class MailPage:
         return self._imap_snapshot(self.RECOVERY_SUBJECT_KEYWORDS)
 
     def snapshot_invitation_emails(self):
-        return self._imap_snapshot(self.INVITATION_SUBJECT_KEYWORDS)
+        signatures = set()
+        for item in self._imap_search_messages(timeout_sec=8):
+            if self._is_invitation_message(item):
+                signatures.add(item["signature"])
+        return signatures
 
     def snapshot_2fa_emails(self):
         return self._imap_snapshot(self.CODE_2FA_SUBJECT_KEYWORDS)
@@ -300,7 +315,14 @@ class MailPage:
         return self._wait_for_email(self.RECOVERY_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
 
     def wait_for_invitation_email(self, timeout=60, exclude_signatures: set[str] | None = None):
-        return self._wait_for_email(self.INVITATION_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
+        timeout_sec = timeout if timeout is not None else config.MAIL_INVITATION_TIMEOUT_SEC
+        return (
+            self._imap_find_new_invitation_message(
+                exclude_signatures=exclude_signatures,
+                timeout_sec=timeout_sec,
+            )
+            is not None
+        )
 
     def wait_for_2fa_code_email(self, timeout=60, exclude_signatures: set[str] | None = None):
         return self._wait_for_email(self.CODE_2FA_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
@@ -322,10 +344,10 @@ class MailPage:
         return link
 
     def open_invitation_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
-        message = self._imap_find_new_message(
-            keywords=self.INVITATION_SUBJECT_KEYWORDS,
+        timeout_sec = config.MAIL_INVITATION_TIMEOUT_SEC if wait_for_email else 5
+        message = self._imap_find_new_invitation_message(
             exclude_signatures=exclude_signatures,
-            timeout_sec=60 if wait_for_email else 5,
+            timeout_sec=timeout_sec,
         )
         if not message:
             raise InvitationEmailNotReceivedError("Письмо с приглашением не пришло")
@@ -410,4 +432,52 @@ class MailPage:
                 if self._is_invitation_message(item):
                     return item
             time.sleep(2)
+        return None
+
+    def _is_invitation_message(self, item: dict) -> bool:
+        haystack = f"{item.get('subject', '')}\n{item.get('body', '')}".lower()
+        if any(keyword.lower() in haystack for keyword in self.INVITATION_SUBJECT_KEYWORDS):
+            return True
+
+        body = item.get("body", "")
+        return bool(
+            self._extract_join_link_from_text(body)
+            or self._extract_sid_link_from_text(body)
+        )
+
+    def _imap_find_new_invitation_message(
+        self,
+        exclude_signatures: set[str] | None,
+        timeout_sec: int = 60,
+        unread_only: bool | None = None,
+    ):
+        exclude_signatures = exclude_signatures or set()
+        if unread_only is None:
+            unread_only = config.MAIL_IMAP_UNREAD_ONLY
+
+        deadline = time.time() + timeout_sec
+        attempt = 0
+        while time.time() < deadline:
+            attempt += 1
+            messages = self._imap_search_messages(timeout_sec=10, unread_only=unread_only)
+            self._debug(
+                f"Поиск приглашения: попытка #{attempt}, unread_only={unread_only}, "
+                f"exclude_signatures={len(exclude_signatures)}, получено сообщений={len(messages)}"
+            )
+            for item in messages:
+                if item["signature"] in exclude_signatures:
+                    self._debug(
+                        f"Пропуск (signature в baseline): subject='{self._shorten(item.get('subject', ''))}'"
+                    )
+                    continue
+                is_invitation = self._is_invitation_message(item)
+                self._debug(
+                    f"Кандидат: subject='{self._shorten(item.get('subject', ''))}', "
+                    f"invitation_match={is_invitation}"
+                )
+                if is_invitation:
+                    self._debug("Найдено новое приглашение, завершаем поиск.")
+                    return item
+            time.sleep(2)
+        self._debug("Новое приглашение не найдено до истечения timeout.")
         return None

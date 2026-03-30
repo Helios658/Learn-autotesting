@@ -64,6 +64,8 @@ class Config:
     MAIL_IMAP_PORT = int(os.getenv('MAIL_IMAP_PORT', '993'))
     MAIL_IMAP_FOLDER = os.getenv('MAIL_IMAP_FOLDER', 'INBOX')
     MAIL_IMAP_UNREAD_ONLY = os.getenv('MAIL_IMAP_UNREAD_ONLY', 'true').lower() == 'true'
+    MAIL_IMAP_DEBUG = os.getenv('MAIL_IMAP_DEBUG', 'false').lower() == 'true'
+    MAIL_INVITATION_TIMEOUT_SEC = int(os.getenv('MAIL_INVITATION_TIMEOUT_SEC', '120'))
 
     # Администратор
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
