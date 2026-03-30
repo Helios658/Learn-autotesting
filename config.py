@@ -1,4 +1,3 @@
-# config.py
 import os
 from dotenv import load_dotenv
 from utils.password_manager import PasswordManager
@@ -64,6 +63,7 @@ class Config:
     MAIL_IMAP_HOST = os.getenv('MAIL_IMAP_HOST', '')
     MAIL_IMAP_PORT = int(os.getenv('MAIL_IMAP_PORT', '993'))
     MAIL_IMAP_FOLDER = os.getenv('MAIL_IMAP_FOLDER', 'INBOX')
+    MAIL_IMAP_UNREAD_ONLY = os.getenv('MAIL_IMAP_UNREAD_ONLY', 'true').lower() == 'true'
 
     # Администратор
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
@@ -113,5 +113,3 @@ if __name__ == "__main__":
     print(f"USER_EMAIL: {config.USER_EMAIL}")
     print(f"USER_PASSWORD: {'*' * len(config.USER_PASSWORD) if config.USER_PASSWORD else '(пусто)'}")
     print(f"Пароль из файла: {get_dynamic_password()}")
-
-

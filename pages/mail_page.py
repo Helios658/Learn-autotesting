@@ -86,7 +86,7 @@ class MailPage:
                 "Укажите MAIL_IMAP_HOST/MAIL_IMAP_PORT/MAIL_IMAP_FOLDER в .env"
             )
 
-    def _imap_search_messages(self, timeout_sec: int = 60):
+    def _imap_search_messages(self, timeout_sec: int = 60, unread_only: bool = False):
         self._ensure_imap_config()
 
         deadline = time.time() + timeout_sec
@@ -101,7 +101,8 @@ class MailPage:
                 with imaplib.IMAP4_SSL(host, port) as imap:
                     imap.login(username, password)
                     imap.select(folder)
-                    status, data = imap.search(None, "ALL")
+                    search_criteria = "UNSEEN" if unread_only else "ALL"
+                    status, data = imap.search(None, search_criteria)
                     if status != "OK":
                         time.sleep(2)
                         continue
@@ -137,7 +138,14 @@ class MailPage:
 
                         body = "\n".join(body_parts)
                         signature = f"{message_id_header}|{date_header}|{subject}"
-                        messages.append({"subject": subject, "body": body, "signature": signature})
+                        messages.append(
+                            {
+                                "subject": subject,
+                                "body": body,
+                                "signature": signature,
+                                "message_id": message_id.decode(errors="ignore"),
+                            }
+                        )
                     return messages
             except Exception:
                 time.sleep(2)
@@ -153,11 +161,19 @@ class MailPage:
                 signatures.add(item["signature"])
         return signatures
 
-    def _imap_find_new_message(self, keywords: list[str], exclude_signatures: set[str] | None, timeout_sec: int = 60):
+    def _imap_find_new_message(
+        self,
+        keywords: list[str],
+        exclude_signatures: set[str] | None,
+        timeout_sec: int = 60,
+        unread_only: bool | None = None,
+    ):
         exclude_signatures = exclude_signatures or set()
+        if unread_only is None:
+            unread_only = config.MAIL_IMAP_UNREAD_ONLY
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
-            for item in self._imap_search_messages(timeout_sec=10):
+            for item in self._imap_search_messages(timeout_sec=10, unread_only=unread_only):
                 if item["signature"] in exclude_signatures:
                     continue
                 haystack = f"{item['subject']}\n{item['body']}".lower()
@@ -249,9 +265,19 @@ class MailPage:
         return None
 
     def login(self, username=None, password=None):
-        # Для IMAP-режима "логин" — это проверка соединения.
-        self._imap_search_messages(timeout_sec=8)
-        print(f"✅ Успешное IMAP-подключение: {username or config.MAIL_USERNAME}")
+        # Для IMAP-режима "логин" — это проверка соединения без чтения писем.
+        self._ensure_imap_config()
+        username = username or config.MAIL_USERNAME
+        password = password or config.MAIL_PASSWORD
+        folder = config.MAIL_IMAP_FOLDER or "INBOX"
+        host = config.MAIL_IMAP_HOST
+        port = config.MAIL_IMAP_PORT
+
+        with imaplib.IMAP4_SSL(host, port) as imap:
+            imap.login(username, password)
+            imap.select(folder)
+
+        print(f"✅ Успешное IMAP-подключение: {username}")
         return self
 
     def _wait_for_email(self, keywords, timeout=60, exclude_signatures: set[str] | None = None):
