@@ -478,6 +478,8 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
         f"Некорректная ссылка регистрации: {registration_url}"
     )
 
+    driver.wait_for_timeout(15_000)
+
     guest_context, guest_page = flow.submit_registration_link_and_login(
         registration_url=registration_url,
         email=config.USER_EMAIL,
