@@ -173,19 +173,12 @@ class MailPage:
             unread_only = config.MAIL_IMAP_UNREAD_ONLY
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
-            search_modes = [unread_only]
-            # fallback: часть серверов/клиентов может помечать новое письмо как read
-            # почти сразу, поэтому при strict UNSEEN добавляем проверку ALL.
-            if unread_only:
-                search_modes.append(False)
-
-            for mode in search_modes:
-                for item in self._imap_search_messages(timeout_sec=10, unread_only=mode):
-                    if item["signature"] in exclude_signatures:
-                        continue
-                    haystack = f"{item['subject']}\n{item['body']}".lower()
-                    if any(keyword.lower() in haystack for keyword in keywords):
-                        return item
+            for item in self._imap_search_messages(timeout_sec=10, unread_only=unread_only):
+                if item["signature"] in exclude_signatures:
+                    continue
+                haystack = f"{item['subject']}\n{item['body']}".lower()
+                if any(keyword.lower() in haystack for keyword in keywords):
+                    return item
             time.sleep(2)
         return None
 
