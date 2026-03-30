@@ -13,6 +13,8 @@ class PasswordRecoveryFlow:
         self.recovery_page = PasswordRecoveryPage(driver)
         self.new_password_page = NewPasswordPage(driver)
         self.password_service = PasswordService()
+        # Обратная совместимость: параметр принимаем, но для recovery всегда
+        # используем свежую вкладку почты после отправки запроса.
         self._mail_page_compat = mail_page
 
     def run(self) -> bool:
@@ -25,15 +27,10 @@ class PasswordRecoveryFlow:
         # 3. Запрос восстановления
         self.recovery_page.request_password_recovery(config.USER_EMAIL)
 
-        # 4. Забираем письмо и ссылку в отдельной вкладке почты после отправки запроса,
-        # чтобы не цеплять старые письма из заранее открытой сессии.
-        mail_browser_page = self.driver.context.new_page()
-        mail_page = MailPage(mail_browser_page)
-        try:
-            mail_page.login()
-            reset_link = mail_page.get_password_reset_link(wait_for_email=True)
-        finally:
-            mail_browser_page.close()
+        # 4. Забираем письмо и ссылку через IMAP (UI почты не используется).
+        mail_page = MailPage()
+        mail_page.login()
+        reset_link = mail_page.get_password_reset_link(wait_for_email=True)
 
         # 5. Переход по ссылке
         self.driver.goto(reset_link)

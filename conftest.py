@@ -7,7 +7,6 @@ from utils.artifacts import save_artifacts
 from config import config
 import socket
 from playwright.sync_api import Error as PlaywrightError
-
 load_dotenv()
 
 
@@ -148,48 +147,6 @@ def driver(request, playwright_instance: Playwright):
             context.tracing.stop()
         except PlaywrightError as exc:
             print(f"⚠️ Не удалось сохранить trace: {exc}")
-        try:
-            context.clear_cookies()
-        except PlaywrightError:
-            pass
-
-        context.close()
-        browser.close()
-
-@pytest.fixture(scope="session")
-def mail_page_session(request, playwright_instance: Playwright):
-    """
-    Отдельная session-scoped страница почты:
-    - логинимся 1 раз на всю сессию тестов,
-    - избегаем частых новых OWA-сессий и блокировок по лимиту.
-    """
-    from pages.mail_page import MailPage
-
-    resolved_browser, browser_launcher = _resolve_browser_launcher(playwright_instance)
-    use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
-    launch_kwargs = {"headless": use_headless}
-    if resolved_browser == "chromium":
-        launch_kwargs["args"] = ["--ignore-certificate-errors", "--allow-insecure-localhost"]
-
-    browser = browser_launcher.launch(**launch_kwargs)
-    context = browser.new_context(ignore_https_errors=True, viewport={"width": 1600, "height": 900})
-    page = context.new_page()
-
-    mail_page = MailPage(page)
-    mail_page.login()
-
-    yield mail_page
-
-    mail_logout_urls = [
-        f"{config.MAIL_URL.rstrip('/')}/owa/logoff.owa",
-        f"{config.MAIL_URL.rstrip('/')}/owa/auth/logoff.aspx",
-    ]
-    for logout_url in mail_logout_urls:
-        try:
-            page.goto(logout_url, wait_until="domcontentloaded", timeout=8000)
-            page.wait_for_timeout(400)
-        except PlaywrightError:
-            continue
 
     try:
         context.clear_cookies()
@@ -198,6 +155,17 @@ def mail_page_session(request, playwright_instance: Playwright):
 
     context.close()
     browser.close()
+
+@pytest.fixture(scope="session")
+def mail_page_session():
+    """
+    Session-scoped IMAP mail client (без UI браузера).
+    """
+    from pages.mail_page import MailPage
+
+    mail_page = MailPage()
+    mail_page.login()
+    yield mail_page
 
 
 @pytest.fixture

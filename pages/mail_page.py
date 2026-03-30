@@ -1,12 +1,13 @@
+import email
+import imaplib
 import re
 import time
-import imaplib
-import email
-from html import unescape
 from email.header import decode_header
+from html import unescape
 from urllib.parse import unquote, urlparse
+
 from config import config
-from playwright.sync_api import Error as PlaywrightError
+
 
 class MailPageError(RuntimeError):
     """Базовая ошибка для сценариев работы с почтой."""
@@ -19,6 +20,7 @@ class RecoveryEmailNotReceivedError(MailPageError):
 class RecoveryLinkNotFoundError(MailPageError):
     """Ссылка на восстановление пароля не найдена в письме."""
 
+
 class InvitationEmailNotReceivedError(MailPageError):
     """Письмо с приглашением на мероприятие не было получено вовремя."""
 
@@ -26,11 +28,14 @@ class InvitationEmailNotReceivedError(MailPageError):
 class InvitationLinkNotFoundError(MailPageError):
     """Ссылка приглашения на мероприятие не найдена в письме."""
 
+
 class Code2FAEmailNotReceivedError(MailPageError):
     """Письмо с кодом 2FA не было получено вовремя."""
 
+
 class Code2FANotFoundError(MailPageError):
     """Код 2FA не найден в письме."""
+
 
 class MailPage:
     JOIN_LINK_STRICT_PATTERN = (
@@ -39,27 +44,14 @@ class MailPage:
     )
     SID_LINK_PATTERN = r"https?://[^\s<>\"']*[\?&]sid=[^\s<>\"'&]+[^\s<>\"']*"
 
-    def __init__(self, page):
-        self.page = page
-        self.mail_read_mode = (getattr(config, "MAIL_READ_MODE", "auto") or "auto").lower()
-        self.LOGIN_INPUT = "#username"
-        self.PASSWORD_INPUT = "#password"
-        self.SIGNIN_BUTTON = ".signinTxt"
+    def __init__(self, page=None):
+        self.page = page  # совместимость со старыми вызовами
         self.RECOVERY_SUBJECT_KEYWORDS = [
             "Восстановление пароля",
             "Password Recovery",
             "Set a new password",
             "Video Conference System Password Recovery",
             "gamma.hi-tech.org Video Confer",
-        ]
-        self.EMAIL_SUBJECT_LOCATORS = [
-            "xpath=//a[contains(., 'Восстановление пароля')]",
-            "xpath=//a[contains(., 'Password Recovery')]",
-            "xpath=//a[contains(., 'Set a new password')]",
-            "xpath=//a[contains(., 'Video Conference System Password Recovery')]",
-            "xpath=//a[contains(., 'gamma.hi-tech.org Video Confer')]",
-            "xpath=//span[contains(., 'Восстановление пароля')]/ancestor::a[1]",
-            "xpath=//span[contains(., 'Password Recovery')]/ancestor::a[1]",
         ]
         self.CODE_2FA_SUBJECT_KEYWORDS = [
             "Подтверждение входа",
@@ -71,15 +63,8 @@ class MailPage:
             "Приглашение на мероприятие",
             "Event invitation",
         ]
-        self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
-        self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
-
-    def _should_use_imap(self) -> bool:
-        if self.mail_read_mode == "ui":
-            return False
-        if not config.MAIL_IMAP_HOST:
-            return False
-        return self.mail_read_mode in ("auto", "imap")
+        self._imap_last_invitation_message = None
+        self._imap_last_2fa_message = None
 
     @staticmethod
     def _decode_mime_header(value: str) -> str:
@@ -94,9 +79,15 @@ class MailPage:
                 decoded.append(chunk)
         return "".join(decoded)
 
+    def _ensure_imap_config(self):
+        if not config.MAIL_IMAP_HOST:
+            raise MailPageError(
+                "IMAP режим обязателен, но не задан MAIL_IMAP_HOST. "
+                "Укажите MAIL_IMAP_HOST/MAIL_IMAP_PORT/MAIL_IMAP_FOLDER в .env"
+            )
+
     def _imap_search_messages(self, timeout_sec: int = 60):
-        if not self._should_use_imap():
-            return []
+        self._ensure_imap_config()
 
         deadline = time.time() + timeout_sec
         username = config.MAIL_USERNAME
@@ -115,17 +106,19 @@ class MailPage:
                         time.sleep(2)
                         continue
 
-                    message_ids = data[0].split()[-30:]  # последние письма
+                    message_ids = data[0].split()[-50:]
                     messages = []
                     for message_id in reversed(message_ids):
                         fetch_status, msg_data = imap.fetch(message_id, "(RFC822)")
                         if fetch_status != "OK" or not msg_data:
                             continue
+
                         raw_msg = msg_data[0][1]
                         msg = email.message_from_bytes(raw_msg)
                         subject = self._decode_mime_header(msg.get("Subject", ""))
                         message_id_header = msg.get("Message-ID", "")
                         date_header = msg.get("Date", "")
+
                         body_parts = []
                         if msg.is_multipart():
                             for part in msg.walk():
@@ -144,13 +137,7 @@ class MailPage:
 
                         body = "\n".join(body_parts)
                         signature = f"{message_id_header}|{date_header}|{subject}"
-                        messages.append(
-                            {
-                                "subject": subject,
-                                "body": body,
-                                "signature": signature,
-                            }
-                        )
+                        messages.append({"subject": subject, "body": body, "signature": signature})
                     return messages
             except Exception:
                 time.sleep(2)
@@ -170,345 +157,13 @@ class MailPage:
         exclude_signatures = exclude_signatures or set()
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
-            messages = self._imap_search_messages(timeout_sec=10)
-            for item in messages:
+            for item in self._imap_search_messages(timeout_sec=10):
                 if item["signature"] in exclude_signatures:
                     continue
                 haystack = f"{item['subject']}\n{item['body']}".lower()
                 if any(keyword.lower() in haystack for keyword in keywords):
                     return item
             time.sleep(2)
-        return None
-
-    @staticmethod
-    def _escape_xpath_text(value: str) -> str:
-        if "'" not in value:
-            return f"'{value}'"
-        if '"' not in value:
-            return f'"{value}"'
-        parts = value.split("'")
-        return "concat(" + ", \"'\", ".join([f"'{part}'" for part in parts]) + ")"
-
-    @staticmethod
-    def _first_visible(locator, limit: int = 30):
-        try:
-            count = locator.count()
-        except PlaywrightError:
-            return None
-
-        for idx in range(min(count, limit)):
-            candidate = locator.nth(idx)
-            try:
-                if candidate.is_visible():
-                    return candidate
-            except PlaywrightError:
-                continue
-        return None
-
-    @staticmethod
-    def _locator_signature(locator):
-        try:
-            payload = locator.evaluate(
-                """
-                (el) => {
-                    const row = el.closest("tr, li, [role='option'], a, div") || el;
-                    const safe = (v) => (v || "").toString().trim();
-                    return {
-                        text: safe(el.textContent),
-                        href: safe(el.getAttribute("href")),
-                        id: safe(el.id),
-                        dataId: safe(el.getAttribute("data-id")),
-                        dataUid: safe(el.getAttribute("data-uid")),
-                        ariaLabel: safe(el.getAttribute("aria-label")),
-                        rowText: safe(row.textContent),
-                        rowId: safe(row.id),
-                        rowDataId: safe(row.getAttribute("data-id")),
-                    };
-                }
-                """
-            )
-            return "|".join(
-                [
-                    payload.get("text", ""),
-                    payload.get("href", ""),
-                    payload.get("id", ""),
-                    payload.get("dataId", ""),
-                    payload.get("dataUid", ""),
-                    payload.get("ariaLabel", ""),
-                    payload.get("rowText", ""),
-                    payload.get("rowId", ""),
-                    payload.get("rowDataId", ""),
-                ]
-            )
-        except PlaywrightError:
-            return ""
-
-    def _collect_subject_signatures_by_keywords(self, keywords, limit: int = 30):
-        signatures = []
-        seen = set()
-        for keyword in keywords:
-            escaped = self._escape_xpath_text(keyword)
-            selectors = [
-                f"xpath=//a[contains(., {escaped})]",
-                f"xpath=//span[contains(., {escaped})]/ancestor::a[1]",
-                f"xpath=//span[contains(., {escaped})]/ancestor::div[1]",
-                f"xpath=//div[contains(., {escaped}) and @role='option']",
-            ]
-            for selector in selectors:
-                try:
-                    locator = self.page.locator(selector)
-                    count = locator.count()
-                except PlaywrightError:
-                    continue
-
-                for idx in range(min(count, limit)):
-                    candidate = locator.nth(idx)
-                    try:
-                        if not candidate.is_visible():
-                            continue
-                    except PlaywrightError:
-                        continue
-                    signature = self._locator_signature(candidate)
-                    if signature and signature not in seen:
-                        seen.add(signature)
-                        signatures.append(signature)
-        return set(signatures)
-
-    def snapshot_recovery_emails(self):
-        if self._should_use_imap():
-            return self._imap_snapshot(self.RECOVERY_SUBJECT_KEYWORDS)
-        return self._collect_subject_signatures_by_keywords(self.RECOVERY_SUBJECT_KEYWORDS)
-
-    def snapshot_invitation_emails(self):
-        if self._should_use_imap():
-            return self._imap_snapshot(self.INVITATION_SUBJECT_KEYWORDS)
-        return self._collect_subject_signatures_by_keywords(self.INVITATION_SUBJECT_KEYWORDS)
-
-    def snapshot_2fa_emails(self):
-        if self._should_use_imap():
-            return self._imap_snapshot(self.CODE_2FA_SUBJECT_KEYWORDS)
-        return self._collect_subject_signatures_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
-
-    def _find_recovery_email_subject(self, exclude_signatures: set[str] | None = None):
-        for selector in self.EMAIL_SUBJECT_LOCATORS:
-            try:
-                locator = self.page.locator(selector)
-                count = locator.count()
-                for idx in range(min(count, 30)):
-                    candidate = locator.nth(idx)
-                    if not candidate.is_visible():
-                        continue
-                    signature = self._locator_signature(candidate)
-                    if exclude_signatures and signature in exclude_signatures:
-                        continue
-                    return candidate
-            except PlaywrightError:
-                continue
-        return self._find_email_subject_by_keywords(
-            self.RECOVERY_SUBJECT_KEYWORDS,
-            exclude_signatures=exclude_signatures,
-        )
-
-    def _find_2fa_email_subject(self, exclude_signatures: set[str] | None = None):
-        # Приоритет — старый, уже известный локатор.
-        try:
-            locator = self.page.locator(self.CODE_2FA_EMAIL_SUBJECT)
-            count = locator.count()
-            for idx in range(min(count, 30)):
-                candidate = locator.nth(idx)
-                if not candidate.is_visible():
-                    continue
-                signature = self._locator_signature(candidate)
-                if exclude_signatures and signature in exclude_signatures:
-                    continue
-                return candidate
-        except PlaywrightError:
-            pass
-
-        return self._find_email_subject_by_keywords(
-            self.CODE_2FA_SUBJECT_KEYWORDS,
-            exclude_signatures=exclude_signatures,
-        )
-
-    def _find_invitation_email_subject(self, exclude_signatures: set[str] | None = None):
-        try:
-            locator = self.page.locator(self.INVITE_EMAIL_SUBJECT)
-            count = locator.count()
-            for idx in range(min(count, 30)):
-                candidate = locator.nth(idx)
-                if not candidate.is_visible():
-                    continue
-                signature = self._locator_signature(candidate)
-                if exclude_signatures and signature in exclude_signatures:
-                    continue
-                return candidate
-        except PlaywrightError:
-            pass
-
-        return self._find_email_subject_by_keywords(
-            self.INVITATION_SUBJECT_KEYWORDS,
-            exclude_signatures=exclude_signatures,
-        )
-
-    def _find_email_subject_by_keywords(self, keywords, exclude_signatures: set[str] | None = None):
-        for keyword in keywords:
-            escaped = self._escape_xpath_text(keyword)
-            selectors = [
-                f"xpath=//a[contains(., {escaped})]",
-                f"xpath=//span[contains(., {escaped})]/ancestor::a[1]",
-                f"xpath=//span[contains(., {escaped})]/ancestor::div[1]",
-                f"xpath=//div[contains(., {escaped}) and @role='option']",
-            ]
-            for selector in selectors:
-                try:
-                    locator = self.page.locator(selector)
-                    count = locator.count()
-                    for idx in range(min(count, 30)):
-                        candidate = locator.nth(idx)
-                        if not candidate.is_visible():
-                            continue
-                        signature = self._locator_signature(candidate)
-                        if exclude_signatures and signature in exclude_signatures:
-                            continue
-                        return candidate
-                except PlaywrightError:
-                    continue
-        return None
-
-    def _open_email_by_subject(self, subject):
-        try:
-            subject.click(timeout=5_000)
-            return
-        except PlaywrightError:
-            pass
-
-        try:
-            parent_anchor = subject.locator("xpath=ancestor::a[1]").first
-            if parent_anchor.count() > 0 and parent_anchor.is_visible():
-                parent_anchor.click(timeout=5_000)
-                return
-        except PlaywrightError:
-            pass
-
-        subject.click(force=True, timeout=5_000)
-
-    @staticmethod
-    def _extract_recovery_anchor_href(context):
-        try:
-            href = context.evaluate(
-                """
-                () => {
-                  const anchors = Array.from(document.querySelectorAll('a[href]'));
-                  const target = anchors.find(a => {
-                    const txt = (a.textContent || '').trim().toLowerCase();
-                    return txt === 'link' || txt === 'ссылке';
-                  });
-                  if (!target) return '';
-                  return target.getAttribute('href') || target.href || '';
-                }
-                """
-            )
-            return href or None
-        except PlaywrightError:
-            return None
-
-    def _click_reset_link_if_present(self):
-        link_locators = [
-            "a:has-text('link')",
-            "a:has-text('ссылке')",
-            "a[href*='/v2/login/new-password']",
-        ]
-
-        search_contexts = [self.page, *self.page.frames]
-
-        for context in search_contexts:
-            direct_href = self._extract_recovery_anchor_href(context)
-            direct_link = self._extract_first_http_url(direct_href or "")
-            if direct_link:
-                return direct_link
-
-            for selector in link_locators:
-                try:
-                    links = context.locator(selector)
-                    count = links.count()
-                except PlaywrightError:
-                    continue
-
-                for idx in range(min(count, 10)):
-                    link = links.nth(idx)
-                    try:
-                        if not link.is_visible():
-                            continue
-                    except PlaywrightError:
-                        continue
-
-                    # 1) Сначала пытаемся вытащить URL без клика (href / html)
-                    for href_expr in (
-                        "el => el.getAttribute('href') || ''",
-                        "el => el.href || ''",
-                    ):
-                        try:
-                            href = link.evaluate(href_expr) or ""
-                            reset_link = self._extract_reset_link_from_text(href)
-                            if reset_link:
-                                return reset_link
-
-                            if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
-                                fallback_href = self._extract_first_http_url(href)
-                                if fallback_href:
-                                    return fallback_href
-                        except PlaywrightError:
-                            pass
-
-                    try:
-                        outer_html = link.evaluate("el => el.outerHTML")
-                        reset_link = self._extract_reset_link_from_text(outer_html or "")
-                        if reset_link:
-                            return reset_link
-                    except PlaywrightError:
-                        pass
-
-                    # 2) Пытаемся кликнуть и поймать новую вкладку
-                    try:
-                        with self.page.context.expect_page(timeout=3000) as page_info:
-                            link.click(force=True, timeout=2000)
-                        new_page = page_info.value
-                        try:
-                            new_page.wait_for_load_state("domcontentloaded", timeout=5000)
-                        except PlaywrightError:
-                            pass
-
-                        popup_url = new_page.url or ""
-                        reset_link = self._extract_reset_link_from_text(popup_url)
-                        if reset_link:
-                            return reset_link
-
-                        if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
-                            fallback_popup_url = self._extract_first_http_url(popup_url)
-                            if fallback_popup_url:
-                                return fallback_popup_url
-                    except PlaywrightError:
-                        pass
-
-                    # 3) Переход в текущей вкладке
-                    try:
-                        before_url = self.page.url
-                        link.click(force=True, timeout=2000)
-                        self.page.wait_for_timeout(800)
-                        after_url = self.page.url
-
-                        if after_url and after_url != before_url:
-                            reset_link = self._extract_reset_link_from_text(after_url)
-                            if reset_link:
-                                return reset_link
-
-                            if selector in ("a:has-text('link')", "a:has-text('ссылке')"):
-                                fallback_after_url = self._extract_first_http_url(after_url)
-                                if fallback_after_url:
-                                    return fallback_after_url
-                    except PlaywrightError:
-                        continue
-
         return None
 
     @staticmethod
@@ -540,138 +195,23 @@ class MailPage:
 
         return None
 
-    def _extract_link_from_page_or_frames(self):
-        # 1) Быстрый путь: HTML текущей страницы
-        link = self._extract_reset_link_from_text(self.page.content())
-        if link:
-            return link
-
-        # 2) Ссылки из DOM текущей страницы
-        hrefs = self.page.evaluate(
-            """
-            () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-            """
-        )
-        for href in hrefs:
-            link = self._extract_reset_link_from_text(href)
-            if link:
-                return link
-
-        # 3) Проверка контента/ссылок во фреймах (часто письмо рендерится во внутреннем iframe)
-        for frame in self.page.frames:
-            try:
-                link = self._extract_reset_link_from_text(frame.content())
-                if link:
-                    return link
-                frame_hrefs = frame.evaluate(
-                    """
-                    () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-                    """
-                )
-                for href in frame_hrefs:
-                    link = self._extract_reset_link_from_text(href)
-                    if link:
-                        return link
-            except PlaywrightError:
-                continue
-
-        return None
-
     def _extract_join_link_from_text(self, text):
         if not text:
             return None
 
         variants = [text, unescape(text), unquote(unescape(text))]
         join_link_pattern = r"https?://[^\s<>\"']+#join:[^\s<>\"']+"
-
-        browser_entry_patterns = [
-            r"Для\s+входа\s+через\s+браузер\s*:\s*(https?://[^\s<>\"']+#join:[^\s<>\"']+)",
-            r"Для\s+входа\s+через\s+браузер[\s\S]{0,250}?(https?://[^\s<>\"']+#join:[^\s<>\"']+)",
-        ]
-
         preferred_host = (urlparse(config.BASE_URL).hostname or "").lower()
 
         def _rank(link: str) -> tuple:
             host = (urlparse(link).hostname or "").lower()
-            return (
-                1 if preferred_host and host == preferred_host else 0,
-                1 if "#join:s" in link.lower() else 0,
-            )
+            return (1 if preferred_host and host == preferred_host else 0, 1 if "#join:s" in link.lower() else 0)
 
         for variant in variants:
-            browser_candidates = []
-            for pattern in browser_entry_patterns:
-                for match in re.finditer(pattern, variant, flags=re.IGNORECASE):
-                    cleaned = self._normalize_join_link(match.group(1))
-                    if cleaned:
-                        browser_candidates.append(cleaned)
-
-            if browser_candidates:
-                return sorted(browser_candidates, key=_rank, reverse=True)[0]
-
-            strict_matches = [
-                self._normalize_join_link(m.group(0))
-                for m in re.finditer(self.JOIN_LINK_STRICT_PATTERN, variant, flags=re.IGNORECASE)
-            ]
-            strict_matches = [m for m in strict_matches if m]
-            if strict_matches:
-                return sorted(strict_matches, key=_rank, reverse=True)[0]
-
-            matches = [
-                self._normalize_join_link(m.group(0))
-                for m in re.finditer(join_link_pattern, variant)
-            ]
-            matches = [m for m in matches if m]
+            matches = [m.group(0).rstrip("\"'.,;:!?)>]") for m in re.finditer(join_link_pattern, variant)]
+            matches = [m for m in matches if "#join:" in m]
             if matches:
                 return sorted(matches, key=_rank, reverse=True)[0]
-
-        return None
-
-    def _normalize_join_link(self, link: str):
-        if not link:
-            return None
-
-        normalized = unescape(link).strip()
-        normalized = normalized.rstrip("\"'.,;:!?)>]")
-
-        strict_match = re.search(self.JOIN_LINK_STRICT_PATTERN, normalized, flags=re.IGNORECASE)
-        if strict_match:
-            return strict_match.group(0)
-
-        return normalized if "#join:" in normalized else None
-
-    def _extract_join_link_from_page_or_frames(self):
-        link = self._extract_join_link_from_text(self.page.content())
-        if link:
-            return link
-
-        hrefs = self.page.evaluate(
-            """
-            () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-            """
-        )
-        for href in hrefs:
-            link = self._extract_join_link_from_text(href)
-            if link:
-                return link
-
-        for frame in self.page.frames:
-            try:
-                link = self._extract_join_link_from_text(frame.content())
-                if link:
-                    return link
-
-                frame_hrefs = frame.evaluate(
-                    """
-                    () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-                    """
-                )
-                for href in frame_hrefs:
-                    link = self._extract_join_link_from_text(href)
-                    if link:
-                        return link
-            except PlaywrightError:
-                continue
 
         return None
 
@@ -694,210 +234,6 @@ class MailPage:
 
         return None
 
-    def login(self, username=None, password=None):
-        username = username or config.MAIL_USERNAME
-        password = password or config.MAIL_PASSWORD
-
-        self.page.goto(config.MAIL_URL, wait_until="domcontentloaded")
-        self.page.locator(self.LOGIN_INPUT).first.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        self.page.locator(self.LOGIN_INPUT).first.fill(username)
-        self.page.locator(self.PASSWORD_INPUT).first.fill(password)
-        self.page.locator(self.SIGNIN_BUTTON).first.click()
-
-        try:
-            self.page.wait_for_url(re.compile(r"/mail/"), timeout=config.EXPLICIT_WAIT * 1000)
-            print(f"✅ Успешный вход на почту: {username}")
-        except PlaywrightError:
-            print("⚠️ Возможно проблемы со входом, но продолжаем...")
-
-        return self
-
-    def _wait_for_email(self, finder, timeout=60, label="письмо", exclude_signatures: set[str] | None = None):
-        print(f"⏳ Ждем {label} (макс {timeout} сек)...")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.page.reload(wait_until="domcontentloaded")
-            if finder(exclude_signatures=exclude_signatures) is not None:
-                print(f"✅ {label.capitalize()} найдено!")
-                return True
-            self.page.wait_for_timeout(2000)
-
-        print(f"❌ {label.capitalize()} не пришло за {timeout} секунд")
-        return False
-
-    def wait_for_recovery_email(self, timeout=60, exclude_signatures: set[str] | None = None):
-        return self._wait_for_email(
-            finder=self._find_recovery_email_subject,
-            timeout=timeout,
-            label="письмо восстановления",
-            exclude_signatures=exclude_signatures,
-        )
-
-    def wait_for_invitation_email(self, timeout=60, exclude_signatures: set[str] | None = None):
-        return self._wait_for_email(
-            finder=self._find_invitation_email_subject,
-            timeout=timeout,
-            label="письмо-приглашение",
-            exclude_signatures=exclude_signatures,
-        )
-
-    def wait_for_2fa_code_email(self, timeout=60, exclude_signatures: set[str] | None = None):
-        return self._wait_for_email(
-            finder=self._find_2fa_email_subject,
-            timeout=timeout,
-            label="письмо с кодом 2FA",
-            exclude_signatures=exclude_signatures,
-        )
-
-    def get_password_reset_link(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
-        if self._should_use_imap():
-            message = self._imap_find_new_message(
-                keywords=self.RECOVERY_SUBJECT_KEYWORDS,
-                exclude_signatures=exclude_signatures,
-                timeout_sec=60 if wait_for_email else 5,
-            )
-            if message:
-                link = self._extract_reset_link_from_text(message["body"]) or self._extract_first_http_url(message["body"])
-                if link:
-                    print(f"✅ Нашли recovery ссылку через IMAP: {link}")
-                    return link
-
-        if wait_for_email and not self.wait_for_recovery_email(exclude_signatures=exclude_signatures):
-            raise RecoveryEmailNotReceivedError("Письмо с восстановлением не пришло")
-
-        subject = self._find_recovery_email_subject(exclude_signatures=exclude_signatures)
-        if subject is None:
-            raise RecoveryEmailNotReceivedError("Письмо с восстановлением не найдено в списке")
-
-        self._open_email_by_subject(subject)
-        self.page.wait_for_timeout(1500)
-
-        deadline = time.time() + config.EXPLICIT_WAIT
-        while time.time() < deadline:
-            clicked_link = self._click_reset_link_if_present()
-            if clicked_link:
-                print(f"✅ Нашли ссылку по anchor-click: {clicked_link}")
-                return clicked_link
-            reset_link = self._extract_link_from_page_or_frames()
-            if reset_link:
-                print(f"✅ Нашли ссылку: {reset_link}")
-                return reset_link
-            self.page.wait_for_timeout(500)
-
-        raise RecoveryLinkNotFoundError("Не нашли ссылку восстановления в письме")
-
-    def open_invitation_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
-        if self._should_use_imap():
-            message = self._imap_find_new_message(
-                keywords=self.INVITATION_SUBJECT_KEYWORDS,
-                exclude_signatures=exclude_signatures,
-                timeout_sec=60 if wait_for_email else 5,
-            )
-            if message:
-                self._imap_last_invitation_message = message
-                return self
-
-        if wait_for_email and not self.wait_for_invitation_email(exclude_signatures=exclude_signatures):
-            raise InvitationEmailNotReceivedError("Письмо с приглашением не пришло")
-
-        subject = self._find_invitation_email_subject(exclude_signatures=exclude_signatures)
-        if subject is None:
-            raise InvitationEmailNotReceivedError("Письмо с приглашением не найдено в списке")
-        subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        self._open_email_by_subject(subject)
-        self.page.wait_for_timeout(1500)
-        return self
-
-    def get_invitation_join_link(self):
-        if self._should_use_imap() and hasattr(self, "_imap_last_invitation_message"):
-            message = self._imap_last_invitation_message
-            join_link = self._extract_join_link_from_text(message.get("body", ""))
-            if join_link:
-                print(f"✅ Нашли invitation join ссылку через IMAP: {join_link}")
-                return join_link
-
-        deadline = time.time() + config.EXPLICIT_WAIT
-        while time.time() < deadline:
-            join_link = self._extract_join_link_from_page_or_frames()
-            if join_link:
-                print(f"✅ Нашли ссылку приглашения: {join_link}")
-                return join_link
-            self.page.wait_for_timeout(500)
-
-        raise InvitationLinkNotFoundError("Не нашли ссылку приглашения в уже открытом письме")
-
-    def _extract_2fa_code_from_page_or_frames(self):
-        code = self._extract_code_from_text(self.page.content())
-        if code:
-            return code
-
-        visible_text = self.page.locator("body").inner_text(timeout=2000)
-        code = self._extract_code_from_text(visible_text)
-        if code:
-            return code
-
-        for frame in self.page.frames:
-            try:
-                code = self._extract_code_from_text(frame.content())
-                if code:
-                    return code
-            except PlaywrightError:
-                pass
-
-            try:
-                frame_text = frame.locator("body").inner_text(timeout=2000)
-                code = self._extract_code_from_text(frame_text)
-                if code:
-                    return code
-            except PlaywrightError:
-                pass
-
-        return None
-
-    def open_2fa_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
-        if self._should_use_imap():
-            message = self._imap_find_new_message(
-                keywords=self.CODE_2FA_SUBJECT_KEYWORDS,
-                exclude_signatures=exclude_signatures,
-                timeout_sec=60 if wait_for_email else 5,
-            )
-            if message:
-                self._imap_last_2fa_message = message
-                return self
-
-        if wait_for_email and not self.wait_for_2fa_code_email(exclude_signatures=exclude_signatures):
-            raise Code2FAEmailNotReceivedError("Письмо с кодом не пришло")
-
-        subject = self._find_2fa_email_subject(exclude_signatures=exclude_signatures)
-        if subject is None:
-            raise Code2FAEmailNotReceivedError("Письмо с кодом не найдено в списке")
-        subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-        subject.click()
-        self.page.wait_for_timeout(1500)
-        return self
-
-    def get_2fa_code_from_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
-        if wait_for_email:
-            self.open_2fa_email(wait_for_email=True, exclude_signatures=exclude_signatures)
-
-        if self._should_use_imap() and hasattr(self, "_imap_last_2fa_message"):
-            code_2fa = self._extract_code_from_text(self._imap_last_2fa_message.get("body", ""))
-            if code_2fa:
-                print("✅ Код 2FA найден через IMAP")
-                return code_2fa
-
-        deadline = time.time() + config.EXPLICIT_WAIT
-
-        while time.time() < deadline:
-            code_2fa = self._extract_2fa_code_from_page_or_frames()
-            if code_2fa:
-                print("✅ Код 2FA найден в письме")
-                return code_2fa
-
-            self.page.wait_for_timeout(500)
-
-        raise Code2FANotFoundError("Код 2FA не найден в письме")
-
     def _extract_sid_link_from_text(self, text):
         if not text:
             return None
@@ -912,53 +248,109 @@ class MailPage:
                 return link
         return None
 
-    def _extract_sid_link_from_page_or_frames(self):
-        link = self._extract_sid_link_from_text(self.page.content())
-        if link:
-            return link
+    def login(self, username=None, password=None):
+        # Для IMAP-режима "логин" — это проверка соединения.
+        self._imap_search_messages(timeout_sec=8)
+        print(f"✅ Успешное IMAP-подключение: {username or config.MAIL_USERNAME}")
+        return self
 
-        hrefs = self.page.evaluate(
-            """
-            () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-            """
+    def _wait_for_email(self, keywords, timeout=60, exclude_signatures: set[str] | None = None):
+        return self._imap_find_new_message(
+            keywords=keywords,
+            exclude_signatures=exclude_signatures,
+            timeout_sec=timeout,
         )
-        for href in hrefs:
-            link = self._extract_sid_link_from_text(href)
-            if link:
-                return link
 
-        for frame in self.page.frames:
-            try:
-                link = self._extract_sid_link_from_text(frame.content())
-                if link:
-                    return link
-                frame_hrefs = frame.evaluate(
-                    """
-                    () => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '')
-                    """
-                )
-                for href in frame_hrefs:
-                    link = self._extract_sid_link_from_text(href)
-                    if link:
-                        return link
-            except PlaywrightError:
-                continue
+    def snapshot_recovery_emails(self):
+        return self._imap_snapshot(self.RECOVERY_SUBJECT_KEYWORDS)
 
-        return None
+    def snapshot_invitation_emails(self):
+        return self._imap_snapshot(self.INVITATION_SUBJECT_KEYWORDS)
+
+    def snapshot_2fa_emails(self):
+        return self._imap_snapshot(self.CODE_2FA_SUBJECT_KEYWORDS)
+
+    def wait_for_recovery_email(self, timeout=60, exclude_signatures: set[str] | None = None):
+        return self._wait_for_email(self.RECOVERY_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
+
+    def wait_for_invitation_email(self, timeout=60, exclude_signatures: set[str] | None = None):
+        return self._wait_for_email(self.INVITATION_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
+
+    def wait_for_2fa_code_email(self, timeout=60, exclude_signatures: set[str] | None = None):
+        return self._wait_for_email(self.CODE_2FA_SUBJECT_KEYWORDS, timeout=timeout, exclude_signatures=exclude_signatures) is not None
+
+    def get_password_reset_link(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        message = self._imap_find_new_message(
+            keywords=self.RECOVERY_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+            timeout_sec=60 if wait_for_email else 5,
+        )
+        if not message:
+            raise RecoveryEmailNotReceivedError("Письмо с восстановлением не пришло")
+
+        link = self._extract_reset_link_from_text(message["body"]) or self._extract_first_http_url(message["body"])
+        if not link:
+            raise RecoveryLinkNotFoundError("Не нашли ссылку восстановления в письме (IMAP)")
+
+        print(f"✅ Нашли recovery ссылку через IMAP: {link}")
+        return link
+
+    def open_invitation_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        message = self._imap_find_new_message(
+            keywords=self.INVITATION_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+            timeout_sec=60 if wait_for_email else 5,
+        )
+        if not message:
+            raise InvitationEmailNotReceivedError("Письмо с приглашением не пришло")
+
+        self._imap_last_invitation_message = message
+        return self
+
+    def get_invitation_join_link(self):
+        if not self._imap_last_invitation_message:
+            raise InvitationLinkNotFoundError("Invitation message не открыт (IMAP)")
+
+        join_link = self._extract_join_link_from_text(self._imap_last_invitation_message.get("body", ""))
+        if not join_link:
+            raise InvitationLinkNotFoundError("Не нашли ссылку приглашения в письме (IMAP)")
+
+        print(f"✅ Нашли invitation join ссылку через IMAP: {join_link}")
+        return join_link
+
+    def open_2fa_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        message = self._imap_find_new_message(
+            keywords=self.CODE_2FA_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+            timeout_sec=60 if wait_for_email else 5,
+        )
+        if not message:
+            raise Code2FAEmailNotReceivedError("Письмо с кодом не пришло")
+
+        self._imap_last_2fa_message = message
+        return self
+
+    def get_2fa_code_from_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        if wait_for_email:
+            self.open_2fa_email(wait_for_email=True, exclude_signatures=exclude_signatures)
+
+        if not self._imap_last_2fa_message:
+            raise Code2FANotFoundError("2FA message не открыт (IMAP)")
+
+        code_2fa = self._extract_code_from_text(self._imap_last_2fa_message.get("body", ""))
+        if not code_2fa:
+            raise Code2FANotFoundError("Код 2FA не найден в письме (IMAP)")
+
+        print("✅ Код 2FA найден через IMAP")
+        return code_2fa
 
     def get_invitation_sid_link(self):
-        if self._should_use_imap() and hasattr(self, "_imap_last_invitation_message"):
-            sid_link = self._extract_sid_link_from_text(self._imap_last_invitation_message.get("body", ""))
-            if sid_link:
-                print(f"✅ Нашли sid-ссылку приглашения через IMAP: {sid_link}")
-                return sid_link
+        if not self._imap_last_invitation_message:
+            raise InvitationLinkNotFoundError("Invitation message не открыт (IMAP)")
 
-        deadline = time.time() + config.EXPLICIT_WAIT
-        while time.time() < deadline:
-            sid_link = self._extract_sid_link_from_page_or_frames()
-            if sid_link:
-                print(f"✅ Нашли sid-ссылку приглашения: {sid_link}")
-                return sid_link
-            self.page.wait_for_timeout(500)
+        sid_link = self._extract_sid_link_from_text(self._imap_last_invitation_message.get("body", ""))
+        if not sid_link:
+            raise InvitationLinkNotFoundError("Не нашли sid-ссылку приглашения в письме (IMAP)")
 
-        raise InvitationLinkNotFoundError("Не нашли sid-ссылку приглашения в уже открытом письме")
+        print(f"✅ Нашли sid-ссылку приглашения через IMAP: {sid_link}")
+        return sid_link

@@ -64,16 +64,12 @@ class LoginFlow:
                 exclude_signatures=baseline_signatures,
             )
         else:
-            mail_browser_page = self.driver.context.new_page()
-            mail_page_local = MailPage(mail_browser_page)
-            try:
-                mail_page_local.login(
-                    username=mail_username or config.MAIL_USERNAME,
-                    password=mail_password or config.MAIL_PASSWORD,
-                )
-                code_2fa = mail_page_local.get_2fa_code_from_email(wait_for_email=True)
-            finally:
-                mail_browser_page.close()
+            mail_page_local = MailPage()
+            mail_page_local.login(
+                username=mail_username or config.MAIL_USERNAME,
+                password=mail_password or config.MAIL_PASSWORD,
+            )
+            code_2fa = mail_page_local.get_2fa_code_from_email(wait_for_email=True)
 
         self.login_page.enter_2fa_code(code_2fa)
         self.login_page.click_login_button_2fa()
