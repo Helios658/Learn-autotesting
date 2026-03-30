@@ -463,10 +463,12 @@ def test_26_ticket_link_guest_user_open_link_first(driver):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("27")
-def test_27_registration_link_authorized_user(driver):
+def test_27_registration_link_authorized_user(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
+    mail_page = mail_page_session
+    invitation_baseline = mail_page.snapshot_invitation_emails()
 
     event_id = flow.create_event_draft_with_registration(return_to_list=False)
     registration_url = flow.get_registration_link_for_event(event_id)
@@ -476,23 +478,38 @@ def test_27_registration_link_authorized_user(driver):
         f"Некорректная ссылка регистрации: {registration_url}"
     )
 
-    final_url, is_joined = flow.register_via_registration_link_as_authorized_user(
+    guest_context, guest_page = flow.submit_registration_link_and_login(
         registration_url=registration_url,
         email=config.USER_EMAIL,
         password=config.USER_PASSWORD,
     )
 
-    is_conference_url = (
-        "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
-    )
-    is_join_url = "/v2/join?token=" in final_url
+    try:
+        mail_page.open_invitation_email(wait_for_email=True, exclude_signatures=invitation_baseline)
+        invited_join_link = mail_page.get_invitation_join_link()
 
-    assert is_joined, (
-        f"Не удалось завершить регистрацию/вход авторизованного пользователя. URL: {final_url}"
-    )
-    assert is_conference_url or is_join_url, (
-        f"После регистрации получен неожиданный URL: {final_url}"
-    )
+        assert "join:" in invited_join_link, (
+            f"Не удалось извлечь ссылку приглашения: {invited_join_link}"
+        )
+
+        guest_page.goto(invited_join_link, wait_until="domcontentloaded")
+        guest_page.wait_for_load_state("domcontentloaded")
+        guest_page.wait_for_timeout(2000)
+
+        guest_join_page = GuestJoinPage(guest_page)
+        is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=20_000)
+
+        final_url = guest_page.url
+        is_conference_url = "/v2/iva/home/conferences" in final_url and "conferenceSessionId=" in final_url
+        is_join_url = "/v2/join?token=" in final_url
+
+        assert is_joined, f"Не удалось завершить вход по ссылке из письма. URL: {final_url}"
+        assert is_conference_url or is_join_url, (
+            f"После перехода по ссылке из письма получен неожиданный URL: {final_url}"
+        )
+
+    finally:
+        guest_context.close()
 
 
 @pytest.mark.buildtest

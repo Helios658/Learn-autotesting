@@ -380,3 +380,34 @@ class MailPage:
 
         print(f"✅ Нашли sid-ссылку приглашения через IMAP: {sid_link}")
         return sid_link
+
+    def _is_invitation_message(self, item: dict) -> bool:
+        haystack = f"{item.get('subject', '')}\n{item.get('body', '')}".lower()
+        if any(keyword.lower() in haystack for keyword in self.INVITATION_SUBJECT_KEYWORDS):
+            return True
+
+        body = item.get("body", "")
+        return bool(
+            self._extract_join_link_from_text(body)
+            or self._extract_sid_link_from_text(body)
+        )
+
+    def _imap_find_new_invitation_message(
+            self,
+            exclude_signatures: set[str] | None,
+            timeout_sec: int = 60,
+            unread_only: bool | None = None,
+    ):
+        exclude_signatures = exclude_signatures or set()
+        if unread_only is None:
+            unread_only = config.MAIL_IMAP_UNREAD_ONLY
+
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            for item in self._imap_search_messages(timeout_sec=10, unread_only=unread_only):
+                if item["signature"] in exclude_signatures:
+                    continue
+                if self._is_invitation_message(item):
+                    return item
+            time.sleep(2)
+        return None
