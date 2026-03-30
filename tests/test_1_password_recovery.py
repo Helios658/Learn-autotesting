@@ -52,8 +52,8 @@ def run_password_validation_step(change_password_modal: ChangePasswordModalPage,
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("16")
-def test_16_password_recovery(driver):
-    flow = PasswordRecoveryFlow(driver)
+def test_16_password_recovery(driver, mail_page_session):
+    flow = PasswordRecoveryFlow(driver, mail_page=mail_page_session)
     assert flow.run(), "Не удалось восстановить пароль и войти с новым"
 
 

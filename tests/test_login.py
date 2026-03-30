@@ -54,11 +54,11 @@ def test_13_adfs_login(login_page):
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("28")
-def test_28_2fa_login(driver):
-    flow = LoginFlow(driver)
+def test_28_2fa_login(driver, mail_page_session):
     result = LoginFlow(driver).login_with_2fa(
         username=config.TEST_2FA_USER_EMAIL,
         password=config.TEST_2FA_USER_PASSWORD,
+        mail_page=mail_page_session,
     )
     assert result == 0
 

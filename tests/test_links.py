@@ -354,6 +354,9 @@ def test_23_link_for_the_invited(driver, mail_page_session):
     assert invited_email, "Не задан email приглашенного пользователя"
     assert invited_password, "Не задан пароль приглашенного пользователя"
 
+    mail_page = mail_page_session
+    invitation_baseline = mail_page.snapshot_invitation_emails()
+
     flow = EventFlow(driver)
     event_id = flow.create_event(return_to_list=False)
     flow.add_participant_in_event(invited_email)
@@ -362,8 +365,7 @@ def test_23_link_for_the_invited(driver, mail_page_session):
         f"После приглашения участника потеряли текущую конференцию: {driver.url}"
     )
 
-    mail_page = mail_page_session
-    mail_page.open_invitation_email(wait_for_email=True)
+    mail_page.open_invitation_email(wait_for_email=True, exclude_signatures=invitation_baseline)
     invited_join_link = mail_page.get_invitation_join_link()
     assert "join:" in invited_join_link, f"Не удалось извлечь ссылку приглашения: {invited_join_link}"
 
@@ -465,6 +467,8 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
+    mail_page = mail_page_session
+    invitation_baseline = mail_page.snapshot_invitation_emails()
 
     event_id = flow.create_event_draft_with_registration(return_to_list=False)
     registration_url = flow.get_registration_link_for_event(event_id)
@@ -481,8 +485,7 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
     )
 
     try:
-        mail_page = mail_page_session
-        mail_page.open_invitation_email(wait_for_email=True)
+        mail_page.open_invitation_email(wait_for_email=True, exclude_signatures=invitation_baseline)
         invited_join_link = mail_page.get_invitation_join_link()
 
         assert "join:" in invited_join_link, (
@@ -517,6 +520,9 @@ def test_32_sid_link_for_unregistered_invited_user(driver, mail_page_session):
     invited_email = config.TEST_UNREGISTED_USER_EMAIL
     assert invited_email, "Не задан TEST_UNREGISTED_USER_EMAIL для проверки sid-ссылки"
 
+    mail_page = mail_page_session
+    invitation_baseline = mail_page.snapshot_invitation_emails()
+
     flow = EventFlow(driver)
     event_id = flow.create_event(return_to_list=False)
     flow.add_participant_in_event(invited_email)
@@ -525,8 +531,7 @@ def test_32_sid_link_for_unregistered_invited_user(driver, mail_page_session):
         f"После приглашения пользователя потеряли текущую конференцию: {driver.url}"
     )
 
-    mail_page = mail_page_session
-    mail_page.open_invitation_email(wait_for_email=True)
+    mail_page.open_invitation_email(wait_for_email=True, exclude_signatures=invitation_baseline)
     sid_link = mail_page.get_invitation_sid_link()
     assert "sid=" in sid_link.lower(), f"Не удалось извлечь sid-ссылку приглашения: {sid_link}"
 
@@ -550,6 +555,8 @@ def test_33_registration_link_unregistered_user_via_name_step(driver, mail_page_
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
+    mail_page = mail_page_session
+    invitation_baseline = mail_page.snapshot_invitation_emails()
     invited_email = config.TEST_UNREGISTED_USER_EMAIL
     assert invited_email, "Не задан TEST_UNREGISTED_USER_EMAIL для регистрации незарегистрированного пользователя"
 
@@ -569,8 +576,7 @@ def test_33_registration_link_unregistered_user_via_name_step(driver, mail_page_
     )
 
     try:
-        mail_page = mail_page_session
-        mail_page.open_invitation_email(wait_for_email=True)
+        mail_page.open_invitation_email(wait_for_email=True, exclude_signatures=invitation_baseline)
 
         try:
             invited_link = mail_page.get_invitation_sid_link()

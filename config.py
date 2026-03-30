@@ -60,6 +60,10 @@ class Config:
     # Почтовый ящик для восстановления пароля
     MAIL_USERNAME = os.getenv('MAIL_USERNAME')
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
+    MAIL_READ_MODE = os.getenv('MAIL_READ_MODE', 'auto').lower()  # auto | ui | imap
+    MAIL_IMAP_HOST = os.getenv('MAIL_IMAP_HOST', '')
+    MAIL_IMAP_PORT = int(os.getenv('MAIL_IMAP_PORT', '993'))
+    MAIL_IMAP_FOLDER = os.getenv('MAIL_IMAP_FOLDER', 'INBOX')
 
     # Администратор
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')

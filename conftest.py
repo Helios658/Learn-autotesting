@@ -148,17 +148,6 @@ def driver(request, playwright_instance: Playwright):
             context.tracing.stop()
         except PlaywrightError as exc:
             print(f"⚠️ Не удалось сохранить trace: {exc}")
-        mail_logout_urls = [
-            f"{config.MAIL_URL.rstrip('/')}/owa/logoff.owa",
-            f"{config.MAIL_URL.rstrip('/')}/owa/auth/logoff.aspx",
-        ]
-        for logout_url in mail_logout_urls:
-            try:
-                page.goto(logout_url, wait_until="domcontentloaded", timeout=8000)
-                page.wait_for_timeout(400)
-            except PlaywrightError:
-                continue
-
         try:
             context.clear_cookies()
         except PlaywrightError:
@@ -167,18 +156,8 @@ def driver(request, playwright_instance: Playwright):
         context.close()
         browser.close()
 
-@pytest.fixture
-def mail_page_session(driver):
-    """
-    Fallback-фикстура на случай, если session-scoped mail fixture отсутствует в conftest.py.
-    Используем текущий driver-контекст и логинимся в почту в рамках теста.
-    """
-    mail_page = MailPage(driver)
-    mail_page.login()
-    return mail_page
-
 @pytest.fixture(scope="session")
-def mail_page_session(playwright_instance: Playwright):
+def mail_page_session(request, playwright_instance: Playwright):
     """
     Отдельная session-scoped страница почты:
     - логинимся 1 раз на всю сессию тестов,
@@ -187,7 +166,8 @@ def mail_page_session(playwright_instance: Playwright):
     from pages.mail_page import MailPage
 
     resolved_browser, browser_launcher = _resolve_browser_launcher(playwright_instance)
-    launch_kwargs = {"headless": config.HEADLESS_MODE}
+    use_headless = request.config.getoption("--headless") or config.HEADLESS_MODE
+    launch_kwargs = {"headless": use_headless}
     if resolved_browser == "chromium":
         launch_kwargs["args"] = ["--ignore-certificate-errors", "--allow-insecure-localhost"]
 

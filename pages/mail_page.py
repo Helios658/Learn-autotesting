@@ -1,6 +1,9 @@
 import re
 import time
+import imaplib
+import email
 from html import unescape
+from email.header import decode_header
 from urllib.parse import unquote, urlparse
 from config import config
 from playwright.sync_api import Error as PlaywrightError
@@ -38,6 +41,7 @@ class MailPage:
 
     def __init__(self, page):
         self.page = page
+        self.mail_read_mode = (getattr(config, "MAIL_READ_MODE", "auto") or "auto").lower()
         self.LOGIN_INPUT = "#username"
         self.PASSWORD_INPUT = "#password"
         self.SIGNIN_BUTTON = ".signinTxt"
@@ -70,6 +74,112 @@ class MailPage:
         self.INVITE_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Приглашение на мероприятие')]"
         self.CODE_2FA_EMAIL_SUBJECT = "xpath=//*[contains(text(), 'Подтверждение входа')]"
 
+    def _should_use_imap(self) -> bool:
+        if self.mail_read_mode == "ui":
+            return False
+        if not config.MAIL_IMAP_HOST:
+            return False
+        return self.mail_read_mode in ("auto", "imap")
+
+    @staticmethod
+    def _decode_mime_header(value: str) -> str:
+        if not value:
+            return ""
+        chunks = decode_header(value)
+        decoded = []
+        for chunk, enc in chunks:
+            if isinstance(chunk, bytes):
+                decoded.append(chunk.decode(enc or "utf-8", errors="ignore"))
+            else:
+                decoded.append(chunk)
+        return "".join(decoded)
+
+    def _imap_search_messages(self, timeout_sec: int = 60):
+        if not self._should_use_imap():
+            return []
+
+        deadline = time.time() + timeout_sec
+        username = config.MAIL_USERNAME
+        password = config.MAIL_PASSWORD
+        folder = config.MAIL_IMAP_FOLDER or "INBOX"
+        host = config.MAIL_IMAP_HOST
+        port = config.MAIL_IMAP_PORT
+
+        while time.time() < deadline:
+            try:
+                with imaplib.IMAP4_SSL(host, port) as imap:
+                    imap.login(username, password)
+                    imap.select(folder)
+                    status, data = imap.search(None, "ALL")
+                    if status != "OK":
+                        time.sleep(2)
+                        continue
+
+                    message_ids = data[0].split()[-30:]  # последние письма
+                    messages = []
+                    for message_id in reversed(message_ids):
+                        fetch_status, msg_data = imap.fetch(message_id, "(RFC822)")
+                        if fetch_status != "OK" or not msg_data:
+                            continue
+                        raw_msg = msg_data[0][1]
+                        msg = email.message_from_bytes(raw_msg)
+                        subject = self._decode_mime_header(msg.get("Subject", ""))
+                        message_id_header = msg.get("Message-ID", "")
+                        date_header = msg.get("Date", "")
+                        body_parts = []
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                content_type = part.get_content_type()
+                                content_disposition = str(part.get("Content-Disposition") or "")
+                                if "attachment" in content_disposition.lower():
+                                    continue
+                                if content_type in ("text/plain", "text/html"):
+                                    payload = part.get_payload(decode=True) or b""
+                                    charset = part.get_content_charset() or "utf-8"
+                                    body_parts.append(payload.decode(charset, errors="ignore"))
+                        else:
+                            payload = msg.get_payload(decode=True) or b""
+                            charset = msg.get_content_charset() or "utf-8"
+                            body_parts.append(payload.decode(charset, errors="ignore"))
+
+                        body = "\n".join(body_parts)
+                        signature = f"{message_id_header}|{date_header}|{subject}"
+                        messages.append(
+                            {
+                                "subject": subject,
+                                "body": body,
+                                "signature": signature,
+                            }
+                        )
+                    return messages
+            except Exception:
+                time.sleep(2)
+                continue
+
+        return []
+
+    def _imap_snapshot(self, keywords: list[str]) -> set[str]:
+        signatures = set()
+        for item in self._imap_search_messages(timeout_sec=8):
+            haystack = f"{item['subject']}\n{item['body']}".lower()
+            if any(keyword.lower() in haystack for keyword in keywords):
+                signatures.add(item["signature"])
+        return signatures
+
+    def _imap_find_new_message(self, keywords: list[str], exclude_signatures: set[str] | None, timeout_sec: int = 60):
+        exclude_signatures = exclude_signatures or set()
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            messages = self._imap_search_messages(timeout_sec=10)
+            for item in messages:
+                if item["signature"] in exclude_signatures:
+                    continue
+                haystack = f"{item['subject']}\n{item['body']}".lower()
+                if any(keyword.lower() in haystack for keyword in keywords):
+                    return item
+            time.sleep(2)
+        return None
+
     @staticmethod
     def _escape_xpath_text(value: str) -> str:
         if "'" not in value:
@@ -95,38 +205,47 @@ class MailPage:
                 continue
         return None
 
-    def _find_recovery_email_subject(self):
-        for selector in self.EMAIL_SUBJECT_LOCATORS:
-            try:
-                subject = self._first_visible(self.page.locator(selector))
-                if subject is not None:
-                    return subject
-            except PlaywrightError:
-                continue
-        return self._find_email_subject_by_keywords(self.RECOVERY_SUBJECT_KEYWORDS)
-
-    def _find_2fa_email_subject(self):
-        # Приоритет — старый, уже известный локатор.
+    @staticmethod
+    def _locator_signature(locator):
         try:
-            subject = self._first_visible(self.page.locator(self.CODE_2FA_EMAIL_SUBJECT))
-            if subject is not None:
-                return subject
+            payload = locator.evaluate(
+                """
+                (el) => {
+                    const row = el.closest("tr, li, [role='option'], a, div") || el;
+                    const safe = (v) => (v || "").toString().trim();
+                    return {
+                        text: safe(el.textContent),
+                        href: safe(el.getAttribute("href")),
+                        id: safe(el.id),
+                        dataId: safe(el.getAttribute("data-id")),
+                        dataUid: safe(el.getAttribute("data-uid")),
+                        ariaLabel: safe(el.getAttribute("aria-label")),
+                        rowText: safe(row.textContent),
+                        rowId: safe(row.id),
+                        rowDataId: safe(row.getAttribute("data-id")),
+                    };
+                }
+                """
+            )
+            return "|".join(
+                [
+                    payload.get("text", ""),
+                    payload.get("href", ""),
+                    payload.get("id", ""),
+                    payload.get("dataId", ""),
+                    payload.get("dataUid", ""),
+                    payload.get("ariaLabel", ""),
+                    payload.get("rowText", ""),
+                    payload.get("rowId", ""),
+                    payload.get("rowDataId", ""),
+                ]
+            )
         except PlaywrightError:
-            pass
+            return ""
 
-        return self._find_email_subject_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
-
-    def _find_invitation_email_subject(self):
-        try:
-            subject = self._first_visible(self.page.locator(self.INVITE_EMAIL_SUBJECT))
-            if subject is not None:
-                return subject
-        except PlaywrightError:
-            pass
-
-        return self._find_email_subject_by_keywords(self.INVITATION_SUBJECT_KEYWORDS)
-
-    def _find_email_subject_by_keywords(self, keywords):
+    def _collect_subject_signatures_by_keywords(self, keywords, limit: int = 30):
+        signatures = []
+        seen = set()
         for keyword in keywords:
             escaped = self._escape_xpath_text(keyword)
             selectors = [
@@ -137,9 +256,121 @@ class MailPage:
             ]
             for selector in selectors:
                 try:
-                    subject = self._first_visible(self.page.locator(selector))
-                    if subject is not None:
-                        return subject
+                    locator = self.page.locator(selector)
+                    count = locator.count()
+                except PlaywrightError:
+                    continue
+
+                for idx in range(min(count, limit)):
+                    candidate = locator.nth(idx)
+                    try:
+                        if not candidate.is_visible():
+                            continue
+                    except PlaywrightError:
+                        continue
+                    signature = self._locator_signature(candidate)
+                    if signature and signature not in seen:
+                        seen.add(signature)
+                        signatures.append(signature)
+        return set(signatures)
+
+    def snapshot_recovery_emails(self):
+        if self._should_use_imap():
+            return self._imap_snapshot(self.RECOVERY_SUBJECT_KEYWORDS)
+        return self._collect_subject_signatures_by_keywords(self.RECOVERY_SUBJECT_KEYWORDS)
+
+    def snapshot_invitation_emails(self):
+        if self._should_use_imap():
+            return self._imap_snapshot(self.INVITATION_SUBJECT_KEYWORDS)
+        return self._collect_subject_signatures_by_keywords(self.INVITATION_SUBJECT_KEYWORDS)
+
+    def snapshot_2fa_emails(self):
+        if self._should_use_imap():
+            return self._imap_snapshot(self.CODE_2FA_SUBJECT_KEYWORDS)
+        return self._collect_subject_signatures_by_keywords(self.CODE_2FA_SUBJECT_KEYWORDS)
+
+    def _find_recovery_email_subject(self, exclude_signatures: set[str] | None = None):
+        for selector in self.EMAIL_SUBJECT_LOCATORS:
+            try:
+                locator = self.page.locator(selector)
+                count = locator.count()
+                for idx in range(min(count, 30)):
+                    candidate = locator.nth(idx)
+                    if not candidate.is_visible():
+                        continue
+                    signature = self._locator_signature(candidate)
+                    if exclude_signatures and signature in exclude_signatures:
+                        continue
+                    return candidate
+            except PlaywrightError:
+                continue
+        return self._find_email_subject_by_keywords(
+            self.RECOVERY_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+        )
+
+    def _find_2fa_email_subject(self, exclude_signatures: set[str] | None = None):
+        # Приоритет — старый, уже известный локатор.
+        try:
+            locator = self.page.locator(self.CODE_2FA_EMAIL_SUBJECT)
+            count = locator.count()
+            for idx in range(min(count, 30)):
+                candidate = locator.nth(idx)
+                if not candidate.is_visible():
+                    continue
+                signature = self._locator_signature(candidate)
+                if exclude_signatures and signature in exclude_signatures:
+                    continue
+                return candidate
+        except PlaywrightError:
+            pass
+
+        return self._find_email_subject_by_keywords(
+            self.CODE_2FA_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+        )
+
+    def _find_invitation_email_subject(self, exclude_signatures: set[str] | None = None):
+        try:
+            locator = self.page.locator(self.INVITE_EMAIL_SUBJECT)
+            count = locator.count()
+            for idx in range(min(count, 30)):
+                candidate = locator.nth(idx)
+                if not candidate.is_visible():
+                    continue
+                signature = self._locator_signature(candidate)
+                if exclude_signatures and signature in exclude_signatures:
+                    continue
+                return candidate
+        except PlaywrightError:
+            pass
+
+        return self._find_email_subject_by_keywords(
+            self.INVITATION_SUBJECT_KEYWORDS,
+            exclude_signatures=exclude_signatures,
+        )
+
+    def _find_email_subject_by_keywords(self, keywords, exclude_signatures: set[str] | None = None):
+        for keyword in keywords:
+            escaped = self._escape_xpath_text(keyword)
+            selectors = [
+                f"xpath=//a[contains(., {escaped})]",
+                f"xpath=//span[contains(., {escaped})]/ancestor::a[1]",
+                f"xpath=//span[contains(., {escaped})]/ancestor::div[1]",
+                f"xpath=//div[contains(., {escaped}) and @role='option']",
+            ]
+            for selector in selectors:
+                try:
+                    locator = self.page.locator(selector)
+                    count = locator.count()
+                    for idx in range(min(count, 30)):
+                        candidate = locator.nth(idx)
+                        if not candidate.is_visible():
+                            continue
+                        signature = self._locator_signature(candidate)
+                        if exclude_signatures and signature in exclude_signatures:
+                            continue
+                        return candidate
                 except PlaywrightError:
                     continue
         return None
@@ -481,12 +712,12 @@ class MailPage:
 
         return self
 
-    def _wait_for_email(self, finder, timeout=60, label="письмо"):
+    def _wait_for_email(self, finder, timeout=60, label="письмо", exclude_signatures: set[str] | None = None):
         print(f"⏳ Ждем {label} (макс {timeout} сек)...")
         deadline = time.time() + timeout
         while time.time() < deadline:
             self.page.reload(wait_until="domcontentloaded")
-            if finder() is not None:
+            if finder(exclude_signatures=exclude_signatures) is not None:
                 print(f"✅ {label.capitalize()} найдено!")
                 return True
             self.page.wait_for_timeout(2000)
@@ -494,32 +725,47 @@ class MailPage:
         print(f"❌ {label.capitalize()} не пришло за {timeout} секунд")
         return False
 
-    def wait_for_recovery_email(self, timeout=60):
+    def wait_for_recovery_email(self, timeout=60, exclude_signatures: set[str] | None = None):
         return self._wait_for_email(
             finder=self._find_recovery_email_subject,
             timeout=timeout,
             label="письмо восстановления",
+            exclude_signatures=exclude_signatures,
         )
 
-    def wait_for_invitation_email(self, timeout=60):
+    def wait_for_invitation_email(self, timeout=60, exclude_signatures: set[str] | None = None):
         return self._wait_for_email(
             finder=self._find_invitation_email_subject,
             timeout=timeout,
             label="письмо-приглашение",
+            exclude_signatures=exclude_signatures,
         )
 
-    def wait_for_2fa_code_email(self, timeout=60):
+    def wait_for_2fa_code_email(self, timeout=60, exclude_signatures: set[str] | None = None):
         return self._wait_for_email(
             finder=self._find_2fa_email_subject,
             timeout=timeout,
             label="письмо с кодом 2FA",
+            exclude_signatures=exclude_signatures,
         )
 
-    def get_password_reset_link(self, wait_for_email=True):
-        if wait_for_email and not self.wait_for_recovery_email():
+    def get_password_reset_link(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        if self._should_use_imap():
+            message = self._imap_find_new_message(
+                keywords=self.RECOVERY_SUBJECT_KEYWORDS,
+                exclude_signatures=exclude_signatures,
+                timeout_sec=60 if wait_for_email else 5,
+            )
+            if message:
+                link = self._extract_reset_link_from_text(message["body"]) or self._extract_first_http_url(message["body"])
+                if link:
+                    print(f"✅ Нашли recovery ссылку через IMAP: {link}")
+                    return link
+
+        if wait_for_email and not self.wait_for_recovery_email(exclude_signatures=exclude_signatures):
             raise RecoveryEmailNotReceivedError("Письмо с восстановлением не пришло")
 
-        subject = self._find_recovery_email_subject()
+        subject = self._find_recovery_email_subject(exclude_signatures=exclude_signatures)
         if subject is None:
             raise RecoveryEmailNotReceivedError("Письмо с восстановлением не найдено в списке")
 
@@ -540,11 +786,21 @@ class MailPage:
 
         raise RecoveryLinkNotFoundError("Не нашли ссылку восстановления в письме")
 
-    def open_invitation_email(self, wait_for_email=True):
-        if wait_for_email and not self.wait_for_invitation_email():
+    def open_invitation_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        if self._should_use_imap():
+            message = self._imap_find_new_message(
+                keywords=self.INVITATION_SUBJECT_KEYWORDS,
+                exclude_signatures=exclude_signatures,
+                timeout_sec=60 if wait_for_email else 5,
+            )
+            if message:
+                self._imap_last_invitation_message = message
+                return self
+
+        if wait_for_email and not self.wait_for_invitation_email(exclude_signatures=exclude_signatures):
             raise InvitationEmailNotReceivedError("Письмо с приглашением не пришло")
 
-        subject = self._find_invitation_email_subject()
+        subject = self._find_invitation_email_subject(exclude_signatures=exclude_signatures)
         if subject is None:
             raise InvitationEmailNotReceivedError("Письмо с приглашением не найдено в списке")
         subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -553,6 +809,13 @@ class MailPage:
         return self
 
     def get_invitation_join_link(self):
+        if self._should_use_imap() and hasattr(self, "_imap_last_invitation_message"):
+            message = self._imap_last_invitation_message
+            join_link = self._extract_join_link_from_text(message.get("body", ""))
+            if join_link:
+                print(f"✅ Нашли invitation join ссылку через IMAP: {join_link}")
+                return join_link
+
         deadline = time.time() + config.EXPLICIT_WAIT
         while time.time() < deadline:
             join_link = self._extract_join_link_from_page_or_frames()
@@ -591,11 +854,21 @@ class MailPage:
 
         return None
 
-    def open_2fa_email(self, wait_for_email=True):
-        if wait_for_email and not self.wait_for_2fa_code_email():
+    def open_2fa_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
+        if self._should_use_imap():
+            message = self._imap_find_new_message(
+                keywords=self.CODE_2FA_SUBJECT_KEYWORDS,
+                exclude_signatures=exclude_signatures,
+                timeout_sec=60 if wait_for_email else 5,
+            )
+            if message:
+                self._imap_last_2fa_message = message
+                return self
+
+        if wait_for_email and not self.wait_for_2fa_code_email(exclude_signatures=exclude_signatures):
             raise Code2FAEmailNotReceivedError("Письмо с кодом не пришло")
 
-        subject = self._find_2fa_email_subject()
+        subject = self._find_2fa_email_subject(exclude_signatures=exclude_signatures)
         if subject is None:
             raise Code2FAEmailNotReceivedError("Письмо с кодом не найдено в списке")
         subject.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -603,9 +876,15 @@ class MailPage:
         self.page.wait_for_timeout(1500)
         return self
 
-    def get_2fa_code_from_email(self, wait_for_email=True):
+    def get_2fa_code_from_email(self, wait_for_email=True, exclude_signatures: set[str] | None = None):
         if wait_for_email:
-            self.open_2fa_email(wait_for_email=True)
+            self.open_2fa_email(wait_for_email=True, exclude_signatures=exclude_signatures)
+
+        if self._should_use_imap() and hasattr(self, "_imap_last_2fa_message"):
+            code_2fa = self._extract_code_from_text(self._imap_last_2fa_message.get("body", ""))
+            if code_2fa:
+                print("✅ Код 2FA найден через IMAP")
+                return code_2fa
 
         deadline = time.time() + config.EXPLICIT_WAIT
 
@@ -668,6 +947,12 @@ class MailPage:
         return None
 
     def get_invitation_sid_link(self):
+        if self._should_use_imap() and hasattr(self, "_imap_last_invitation_message"):
+            sid_link = self._extract_sid_link_from_text(self._imap_last_invitation_message.get("body", ""))
+            if sid_link:
+                print(f"✅ Нашли sid-ссылку приглашения через IMAP: {sid_link}")
+                return sid_link
+
         deadline = time.time() + config.EXPLICIT_WAIT
         while time.time() < deadline:
             sid_link = self._extract_sid_link_from_page_or_frames()

@@ -38,6 +38,7 @@ class LoginFlow:
         self,
         username: str,
         password: str,
+        mail_page: MailPage | None = None,
         mail_username: str | None = None,
         mail_password: str | None = None,
         timeout: int | None = None,
@@ -47,6 +48,9 @@ class LoginFlow:
         self.login_page.open(url=config.LOGIN_2FA_URL)
         self.login_page.enter_username(username)
         self.login_page.enter_password(password)
+        baseline_signatures = None
+        if mail_page is not None:
+            baseline_signatures = mail_page.snapshot_2fa_emails()
 
         if not self.login_page.is_login_button_enabled():
             raise AssertionError("Кнопка 'Войти' должна быть активна")
@@ -54,17 +58,22 @@ class LoginFlow:
         self.login_page.click_login_button()
         self.login_page.wait_for_2fa_step(timeout=timeout)
 
-        mail_browser_page = self.driver.context.new_page()
-        mail_page = MailPage(mail_browser_page)
-
-        try:
-            mail_page.login(
-                username=mail_username or config.MAIL_USERNAME,
-                password=mail_password or config.MAIL_PASSWORD,
+        if mail_page is not None:
+            code_2fa = mail_page.get_2fa_code_from_email(
+                wait_for_email=True,
+                exclude_signatures=baseline_signatures,
             )
-            code_2fa = mail_page.get_2fa_code_from_email(wait_for_email=True)
-        finally:
-            mail_browser_page.close()
+        else:
+            mail_browser_page = self.driver.context.new_page()
+            mail_page_local = MailPage(mail_browser_page)
+            try:
+                mail_page_local.login(
+                    username=mail_username or config.MAIL_USERNAME,
+                    password=mail_password or config.MAIL_PASSWORD,
+                )
+                code_2fa = mail_page_local.get_2fa_code_from_email(wait_for_email=True)
+            finally:
+                mail_browser_page.close()
 
         self.login_page.enter_2fa_code(code_2fa)
         self.login_page.click_login_button_2fa()

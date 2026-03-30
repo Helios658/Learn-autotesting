@@ -7,13 +7,13 @@ from config import config
 
 
 class PasswordRecoveryFlow:
-    def __init__(self, driver):
+    def __init__(self, driver, mail_page: MailPage | None = None):
         self.driver = driver
         self.login_page = LoginPage(driver)
         self.recovery_page = PasswordRecoveryPage(driver)
-        self.mail_page = MailPage(driver)
         self.new_password_page = NewPasswordPage(driver)
         self.password_service = PasswordService()
+        self._mail_page_compat = mail_page
 
     def run(self) -> bool:
         # 1. Открываем логин
@@ -25,7 +25,8 @@ class PasswordRecoveryFlow:
         # 3. Запрос восстановления
         self.recovery_page.request_password_recovery(config.USER_EMAIL)
 
-        # 4. Забираем письмо и ссылку в отдельной вкладке, чтобы не терять состояние основной страницы
+        # 4. Забираем письмо и ссылку в отдельной вкладке почты после отправки запроса,
+        # чтобы не цеплять старые письма из заранее открытой сессии.
         mail_browser_page = self.driver.context.new_page()
         mail_page = MailPage(mail_browser_page)
         try:
