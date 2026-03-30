@@ -24,6 +24,7 @@ class EventFlow:
     def __init__(self, driver: Page):
         self.driver = driver
         self.event_page = EventPage(driver)
+        self._last_created_registration_event_name: str | None = None
 
     def create_event(self, return_to_list: bool = True) -> str:
         with self.driver.expect_response(
@@ -365,10 +366,12 @@ class EventFlow:
         """Открыть ticket-ссылку в новом incognito-контексте и войти как гость."""
         return self.join_guest_via_link(guest_url=ticket_url, guest_name=guest_name)
 
-    def create_event_draft_with_registration(self, return_to_list: bool = False) -> str:
+    def create_event_draft_with_registration(self, return_to_list: bool = False, event_name: str | None = None) -> str:
         self.event_page.open()
         self.event_page.click_add()
         self.event_page.select_simple_event_template()
+        unique_event_name = event_name or self.event_page.generate_unique_event_name(prefix="AutoReg")
+        self.event_page.set_event_name(unique_event_name)
         self.event_page.enable_registration_form()
 
         with self.driver.expect_response(
@@ -400,6 +403,8 @@ class EventFlow:
                 f"Не удалось получить id мероприятия после создания черновика. URL={self.driver.url}"
             )
 
+        self._last_created_registration_event_name = unique_event_name
+
         if return_to_list:
             self.event_page.back_to_list()
 
@@ -409,7 +414,28 @@ class EventFlow:
         current_url = self.driver.url or ""
 
         if target_event_id not in current_url:
-            self.open_event_from_list(target_event_id)
+            self.event_page.back_to_list()
+            expected_name = self._last_created_registration_event_name
+            if expected_name:
+                try:
+                    self.event_page.search_event_in_list(expected_name)
+                    self.open_event_from_list(target_event_id)
+                except AssertionError:
+                    self.open_event_from_list(target_event_id)
+            else:
+                self.open_event_from_list(target_event_id)
+
+        expected_name = self._last_created_registration_event_name
+        if expected_name:
+            try:
+                actual_name = self.event_page.get_event_name()
+            except PlaywrightError:
+                actual_name = ""
+            if actual_name and expected_name not in actual_name:
+                raise AssertionError(
+                    f"Открыто не то мероприятие перед копированием registration-link: "
+                    f"expected_name={expected_name}, actual_name={actual_name}, url={self.driver.url}"
+                )
 
         self.driver.wait_for_load_state("domcontentloaded")
         self.driver.wait_for_timeout(1000)

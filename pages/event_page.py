@@ -1,6 +1,7 @@
 from config import config
 from pages.base_page import BasePage
 from playwright.sync_api import Error as PlaywrightError
+from datetime import datetime
 
 
 class EventPage(BasePage):
@@ -120,6 +121,16 @@ class EventPage(BasePage):
         "app-conference-calling-modal button.iva-icon-button",
         "app-conference-calling-modal svg-icon[src*='close.svg']",
         "app-conference-calling-modal button:has(svg-icon[src*='close.svg'])",
+    ]
+    EVENT_NAME_INPUT_LOCATORS = [
+        "input[name='name']",
+        "input[placeholder='Название']",
+        "input[placeholder*='назван' i]",
+    ]
+    EVENTS_SEARCH_BUTTON = "[e2e-id='contacts-header__search-btn']"
+    EVENTS_SEARCH_INPUT_LOCATORS = [
+        "input.search-input[placeholder='Поиск мероприятий']",
+        "input.search-input.iva-input",
     ]
 
     def open(self):
@@ -589,6 +600,27 @@ class EventPage(BasePage):
             state="visible", timeout=config.EXPLICIT_WAIT * 1000
         )
         self.safe_click(self.SIMPLE_EVENT_TEMPLATE_CARD)
+
+    def generate_unique_event_name(self, prefix: str = "AutoReg") -> str:
+        stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        return f"{prefix}-{stamp}"
+
+    def set_event_name(self, event_name: str):
+        name_input = self._find_first_visible(self.EVENT_NAME_INPUT_LOCATORS, timeout=12_000)
+        name_input.fill("")
+        name_input.fill(event_name)
+        self.page.wait_for_timeout(250)
+
+    def get_event_name(self) -> str:
+        name_input = self._find_first_visible(self.EVENT_NAME_INPUT_LOCATORS, timeout=8_000)
+        return (name_input.input_value() or "").strip()
+
+    def search_event_in_list(self, event_name: str):
+        self.safe_click(self.EVENTS_SEARCH_BUTTON)
+        search_input = self._find_first_visible(self.EVENTS_SEARCH_INPUT_LOCATORS, timeout=8_000)
+        search_input.fill("")
+        search_input.fill(event_name)
+        self.page.wait_for_timeout(700)
 
     def open_join_settings(self):
         section = self._find_first_visible(self.JOIN_SETTINGS_SECTION, timeout=config.EXPLICIT_WAIT * 1000)
