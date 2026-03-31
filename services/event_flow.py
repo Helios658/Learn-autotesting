@@ -550,7 +550,21 @@ class EventFlow:
                 login_page.click_login_button()
 
             guest_page.wait_for_load_state("domcontentloaded")
-            guest_page.wait_for_timeout(2000)
+            auth_ok = login_page.wait_for_successful_login(timeout=30)
+            if not auth_ok:
+                raise AssertionError(
+                    f"Не удалось завершить авторизацию по registration-link. URL после логина: {guest_page.url}"
+                )
+
+            # Явно проверяем, что регистрация действительно завершилась в UI, иначе письмо не придет.
+            registration_completed = registration_page.is_registration_completed(timeout_ms=20_000)
+            if not registration_completed:
+                raise AssertionError(
+                    "Авторизация прошла, но регистрация на мероприятие не завершилась. "
+                    f"Текущий URL: {guest_page.url}"
+                )
+
+            guest_page.wait_for_timeout(1200)
 
             return guest_context, guest_page
         except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
