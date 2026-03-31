@@ -9,24 +9,22 @@ load_dotenv()
 
 def get_dynamic_password():
     """Получает последний сгенерированный пароль из файла"""
-    password_file = Path("last_generated_password.txt")
     env_password = os.getenv('TEST_USER_PASSWORD', '')
+    manager = PasswordManager()
 
-    # В CI приоритетнее пароль из переменных, чтобы не использовать устаревший файл из репозитория.
+    # Приоритет №1 — актуальный пароль, сохраненный тестами во время текущего прогона.
+    runtime_password = manager.get_password()
+    if runtime_password:
+        print(f"📁 Прочитан динамический пароль из {manager.password_file.name}")
+        return runtime_password
+
+    if manager.password_file.exists():
+        print(f"⚠️ Файл {manager.password_file.name} пустой")
+
+    # Приоритет №2 — исходный пароль из CI переменной (на старт прогона).
     if os.getenv('CI', '').lower() == 'true' and env_password:
         print("📝 CI: используем TEST_USER_PASSWORD из переменных окружения")
         return env_password
-
-    if password_file.exists():
-        manager = PasswordManager()
-        password = manager.get_password()
-
-        if password:
-            print(f"📁 Прочитан динамический пароль из {manager.password_file.name}")
-            return password
-
-        if manager.password_file.exists():
-            print(f"⚠️ Файл {manager.password_file.name} пустой")
 
     # Если файла нет или он пустой - используем значение из .env или дефолт
     if env_password:
@@ -35,7 +33,6 @@ def get_dynamic_password():
 
     print("⚠️ Динамический пароль не найден, будет использована пустая строка")
     return ""
-
 
 class Config:
     """Конфигурация тестового окружения"""
