@@ -564,6 +564,25 @@ class EventFlow:
                     f"Текущий URL: {guest_page.url}"
                 )
 
+            # DEBUG: фиксируем состояние перед ожиданием письма
+            print(f"🧪 REG_DEBUG: auth_ok={auth_ok}, registration_completed={registration_completed}")
+            print(f"🧪 REG_DEBUG: guest_page.url={guest_page.url}")
+
+            try:
+                import os
+                os.makedirs("artifacts", exist_ok=True)
+
+                guest_page.screenshot(
+                    path="artifacts/test27_registration_state_before_mail.png",
+                    full_page=True
+                )
+                with open("artifacts/test27_registration_state_before_mail_url.txt", "w", encoding="utf-8") as f:
+                    f.write(f"{guest_page.url}\n")
+
+                print("🧪 REG_DEBUG: saved artifacts/test27_registration_state_before_mail.png")
+            except Exception as exc:
+                print(f"⚠️ REG_DEBUG: failed to save registration debug artifacts: {exc!r}")
+
             guest_page.wait_for_timeout(1200)
 
             return guest_context, guest_page
