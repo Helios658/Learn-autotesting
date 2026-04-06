@@ -16,6 +16,8 @@ class ChatPage(BasePage):
     ]
     CREATE_CHAT_CONTACT = "app-chat-creation-contact"
     CREATE_CHAT_SEARCH_INPUT = "input.search-input"
+    CREATE_CHAT_SUBMIT_BUTTON = "button.iva-button:has-text('Создать чат')"
+    GROUP_CHAT_TOGGLE_INPUT = "iva-toggle input[type='checkbox'][role='switch']"
 
     # Поиск по списку чатов слева
     CHAT_SEARCH_BUTTON = "[e2e-id='contacts-header__search-btn']"
@@ -28,7 +30,19 @@ class ChatPage(BasePage):
 
     # Открытый чат справа
     CHAT_HEADER = "app-chat-header"
+    CHAT_HEADER_INFO = ".chat-header__info"
+    CHAT_HEADER_TITLE = ".chat-header__description-title"
     MESSAGE_LIST = "app-chat-message-list"
+    CHAT_EDITABLE_TITLE_CONTAINER = ".editable-text-container"
+    CHAT_EDIT_ICON = ".editable-text-container .edit-icon"
+    CHAT_EDITABLE_TEXT = ".editable-text-container .text.word-break"
+    CHAT_TITLE_INPUT_CANDIDATES = (
+        ".editable-text-container input",
+        ".editable-text-container textarea",
+        "input[placeholder*='Название']",
+        "input[placeholder*='название']",
+        "[contenteditable='true']",
+    )
 
     # Поле ввода и отправка
     MESSAGE_INPUT = "textarea.chat-message-list__textarea"
@@ -132,6 +146,144 @@ class ChatPage(BasePage):
         header = self.page.locator(self.CHAT_HEADER).first
         header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
 
+    def enable_group_chat_mode(self):
+        container = self.get_create_chat_container()
+        toggle_input = container.locator(self.GROUP_CHAT_TOGGLE_INPUT).first
+        toggle_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        if toggle_input.is_checked():
+            return self
+
+        click_targets = [
+            toggle_input.locator("xpath=ancestor::label[1]").first,
+            container.locator("iva-toggle .layout").first,
+            container.locator("iva-toggle .bar-container").first,
+            toggle_input,
+        ]
+
+        for target in click_targets:
+            try:
+                self.safe_click(target)
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+            self.page.wait_for_timeout(150)
+            try:
+                if toggle_input.is_checked():
+                    return self
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+        raise AssertionError("Не удалось включить тогл 'Групповой чат'")
+        return self
+
+    def select_user_checkbox_from_new_chat_results(self, user_text: str):
+        container = self.get_create_chat_container()
+        row = container.locator(self.CREATE_CHAT_CONTACT).filter(has_text=user_text).first
+        row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        def _is_selected() -> bool:
+            checkbox_input = row.locator("input[type='checkbox']").first
+            try:
+                if checkbox_input.count() > 0 and checkbox_input.is_checked():
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+
+            try:
+                aria_checked = (
+                    row.locator("iva-checkbox").first.get_attribute("aria-checked") or ""
+                ).lower()
+                if aria_checked == "true":
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+
+            return False
+
+        if _is_selected():
+            return self
+
+        click_targets = [
+            row.locator("iva-checkbox .iva-checkbox_frame").first,
+            row.locator("iva-checkbox label").first,
+            row,
+        ]
+
+        for target in click_targets:
+            try:
+                self.safe_click(target)
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+            self.page.wait_for_timeout(120)
+            if _is_selected():
+                return self
+
+        raise AssertionError(f"Не удалось выбрать чекбокс пользователя в списке: {user_text}")
+        return self
+
+    def click_create_chat_submit(self):
+        container = self.get_create_chat_container()
+        submit_button = container.locator(self.CREATE_CHAT_SUBMIT_BUTTON).first
+        submit_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(submit_button)
+        return self
+
+    def rename_opened_chat(self, new_name: str):
+        header = self.page.locator(self.CHAT_HEADER).first
+        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        try:
+            self.safe_click(self.CHAT_HEADER_INFO)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
+        editable_container = self.page.locator(self.CHAT_EDITABLE_TITLE_CONTAINER).first
+        editable_container.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        edit_icon = self.page.locator(self.CHAT_EDIT_ICON).first
+        try:
+            if edit_icon.count() > 0 and edit_icon.is_visible():
+                self.safe_click(edit_icon)
+                self.page.wait_for_timeout(150)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
+        for selector in self.CHAT_TITLE_INPUT_CANDIDATES:
+            input_locator = self.page.locator(selector).first
+            try:
+                if input_locator.count() == 0:
+                    continue
+                input_locator.wait_for(state="visible", timeout=1200)
+                input_locator.fill("")
+                input_locator.fill(new_name)
+                input_locator.press("Enter")
+                break
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        else:
+            try:
+                text_node = self.page.locator(self.CHAT_EDITABLE_TEXT).first
+                text_node.wait_for(state="visible", timeout=1500)
+                self.safe_click(text_node)
+                try:
+                    text_node.dblclick(timeout=1200)
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    pass
+
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.type(new_name)
+                self.page.keyboard.press("Enter")
+            except (PlaywrightError, PlaywrightTimeoutError):
+                raise AssertionError("Не удалось найти поле ввода названия группового чата")
+
+        self.page.locator(self.CHAT_HEADER_TITLE).filter(has_text=new_name).first.wait_for(
+            state="visible",
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
+        return self
+
     @staticmethod
     def _normalize_chat_text(value: str) -> str:
         return (value or "").strip().strip('"').strip("'").lower()
@@ -164,6 +316,17 @@ class ChatPage(BasePage):
             row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
 
         card = row.locator(self.CHAT_CARD).first
+        card.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(card)
+
+        header = self.page.locator(self.CHAT_HEADER).first
+        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+    def open_most_recent_chat_from_list(self):
+        first_chat = self.page.locator(self.CHAT_LIST_ITEM).first
+        first_chat.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        card = first_chat.locator(self.CHAT_CARD).first
         card.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self.safe_click(card)
 
