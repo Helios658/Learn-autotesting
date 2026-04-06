@@ -470,7 +470,7 @@ class EventPage(BasePage):
 
         last_error = None
 
-        for _ in range(5):
+        for _ in range(7):
             try:
                 self._wait_invite_loader_disappear(timeout_ms=2000)
 
@@ -498,6 +498,9 @@ class EventPage(BasePage):
                 self.page.wait_for_timeout(300)
                 self._wait_invite_loader_disappear(timeout_ms=2000)
 
+                if self._wait_add_button_enabled(timeout_ms=2000):
+                    return
+
                 if self._participant_row_is_selected(participant_row):
                     if self._wait_add_button_enabled(timeout_ms=3000):
                         return
@@ -514,11 +517,33 @@ class EventPage(BasePage):
                     pass
 
                 try:
+                    checkbox = participant_row.locator("iva-checkbox").first
+                    if checkbox.count() > 0:
+                        self.safe_click(checkbox)
+                        self.page.wait_for_timeout(300)
+                        self._wait_invite_loader_disappear(timeout_ms=2000)
+                        if self._wait_add_button_enabled(timeout_ms=3000):
+                            return
+                except PlaywrightError:
+                    pass
+
+                try:
                     self.safe_click(participant_row)
                     self.page.wait_for_timeout(300)
                     self._wait_invite_loader_disappear(timeout_ms=2000)
                     if self._wait_add_button_enabled(timeout_ms=3000):
                         return
+                except PlaywrightError:
+                    pass
+
+                try:
+                    if checkbox_input.count() > 0:
+                        checkbox_input.focus()
+                        checkbox_input.press("Space")
+                        self.page.wait_for_timeout(300)
+                        self._wait_invite_loader_disappear(timeout_ms=2000)
+                        if self._wait_add_button_enabled(timeout_ms=3000):
+                            return
                 except PlaywrightError:
                     pass
 

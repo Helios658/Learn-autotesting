@@ -311,5 +311,5 @@ class GuestJoinPage:
             return False
         is_conference_url = "/v2/iva/home/conferences" in url and "conferenceSessionId=" in url
         is_direct_conference_url = "/v2/iva/conference/" in url and "conferenceSessionId=" in url
-        is_join_token_url = "/v2/join?token=" in url
+        is_join_token_url = "/v2/join?" in url and "token=" in url
         return is_conference_url or is_direct_conference_url or is_join_token_url
