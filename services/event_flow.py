@@ -55,6 +55,10 @@ class EventFlow:
         scroller = self.driver.locator(self.EVENT_LIST_SCROLLER).first
         scroller.wait_for(state="visible", timeout=15000)
 
+        expected_name = (self._last_created_registration_event_name or "").strip()
+        if expected_name:
+            self.event_page.search_event_in_list(expected_name)
+
         targeted_locators = [
             self.driver.locator(f"{self.EVENT_CARDS}:has(a[href*='{target_event_id}'])").first,
             self.driver.locator(f"xpath=//{self.EVENT_CARDS}[.//*[contains(@href, '{target_event_id}')]]").first,
@@ -68,37 +72,46 @@ class EventFlow:
             except PlaywrightError:
                 continue
 
-        max_scroll_steps = 120
+        if expected_name:
+            name_locators = [
+                self.driver.locator(
+                    f"{self.EVENT_CARDS}:has-text('{expected_name}')"
+                ).first,
+                self.driver.locator(
+                    f"xpath=//{self.EVENT_CARDS}[.//*[contains(normalize-space(), \"{expected_name}\")]]"
+                ).first,
+            ]
+            for locator in name_locators:
+                try:
+                    if locator.count() > 0 and locator.is_visible():
+                        self.event_page.safe_click(locator, timeout=2500)
+                        current_name = self.event_page.get_event_name()
+                        if expected_name in current_name:
+                            return locator
+                except PlaywrightError:
+                    continue
+
+        max_scroll_steps = 40
         no_progress_steps = 0
 
         for _ in range(max_scroll_steps):
             cards = self.driver.locator(self.EVENT_CARDS)
             visible_count = cards.count()
+            if visible_count == 0:
+                self.driver.wait_for_timeout(300)
+                continue
 
             for idx in range(visible_count):
-                cards = self.driver.locator(self.EVENT_CARDS)
-                if idx >= cards.count():
-                    break
                 card = cards.nth(idx)
-
                 try:
-                    if not card.is_visible():
+                    href = (card.locator("a[href]").first.get_attribute("href") or "")
+                    if target_event_id not in href:
                         continue
+                    self.event_page.safe_click(card, timeout=2000)
+                    if target_event_id in (self.driver.url or ""):
+                        return card
                 except PlaywrightError:
                     continue
-
-                try:
-                    card.scroll_into_view_if_needed(timeout=1200)
-                except PlaywrightError:
-                    pass
-
-                try:
-                    self.event_page.safe_click(card, timeout=1500)
-                except PlaywrightError:
-                    continue
-
-                if target_event_id in (self.driver.url or ""):
-                    return card
 
             prev_top = scroller.evaluate("el => el.scrollTop")
             scroller.evaluate(
@@ -116,7 +129,8 @@ class EventFlow:
                 break
 
         raise AssertionError(
-            f"Не нашли мероприятие {target_event_id} после прокрутки списка конференций"
+            f"Не нашли мероприятие {target_event_id} после прокрутки списка конференций. "
+            f"expected_name={expected_name or '<empty>'}"
         )
 
     def get_guest_link_for_event(self, target_event_id: str) -> str:
@@ -609,4 +623,3 @@ class EventFlow:
         except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
             guest_context.close()
             raise
-
