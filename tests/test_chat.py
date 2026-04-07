@@ -5,6 +5,7 @@ from services.login_flow import LoginFlow
 from pages.chat_page import ChatPage
 from utils.generate_random_message import generate_unique_message
 import time
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 
 @pytest.mark.smoke
@@ -108,3 +109,47 @@ def test_35_create_group_chat_and_capture_chat_id(driver):
 
     unique_group_name = f"autotest-group-{chat_id[:8]}"
     chat_page.rename_opened_chat(unique_group_name)
+
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("36")
+def test_36_convert_existing_p2p_chat_to_group_chat(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    chat_page.create_group_chat_from_opened_p2p()
+
+    participant_to_add = config.TEST_LDAP_USER_EMAIL
+    assert participant_to_add, "Для теста 36 должен быть задан TEST_LDAP_USER_EMAIL."
+    assert participant_to_add not in {config.ADMIN_EMAIL, config.TEST_USER2_EMAIL}, (
+        "TEST_LDAP_USER_EMAIL должен отличаться от ADMIN и TEST_USER2."
+    )
+
+    chat_page.search_user_for_new_chat(participant_to_add)
+    chat_page.select_user_checkbox_from_new_chat_results(participant_to_add)
+
+    chat_page.click_create_chat_submit()
+
+    driver.locator(chat_page.CHAT_HEADER).first.wait_for(
+        state="visible",
+        timeout=config.EXPLICIT_WAIT * 1000,
+    )
+
+    unique_group_name = f"autotest-converted-{int(time.time())}"
+    rename_error = None
+    for _ in range(3):
+        try:
+            chat_page.rename_opened_chat(unique_group_name)
+            rename_error = None
+            break
+        except (PlaywrightTimeoutError, AssertionError) as exc:
+            rename_error = exc
+            driver.wait_for_timeout(1500)
+
+    assert rename_error is None, (
+        f"Не удалось переименовать чат после конвертации p2p->group: {rename_error}"
+    )

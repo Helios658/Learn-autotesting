@@ -12,11 +12,31 @@ class ChatPage(BasePage):
     CLICK_CREATE_CHAT = "button.iva-round-button[iva-size='s'][iva-color='primary']"
     CREATE_CHAT_CONTAINER_LOCATORS = [
         "app-chat-creation",
+        "app-chat-members-adding",
+        "app-add-members-modal",
         "[class*='chat-creation']",
     ]
     CREATE_CHAT_CONTACT = "app-chat-creation-contact"
-    CREATE_CHAT_SEARCH_INPUT = "input.search-input"
-    CREATE_CHAT_SUBMIT_BUTTON = "button.iva-button:has-text('Создать чат')"
+    CREATE_CHAT_CONTACT_CANDIDATES = (
+        "app-chat-creation-contact",
+        "app-chat-members-adding-user",
+        "app-chat-member-item",
+        "app-contact-list-item",
+        "app-user-list-item",
+        "app-option",
+        ".option",
+        "[role='option']",
+        "li",
+    )
+    CREATE_CHAT_SEARCH_INPUT_CANDIDATES = (
+        "input.search-input[placeholder='Поиск пользователей']",
+        "input.search-input",
+        "input[placeholder='Поиск пользователей']",
+    )
+    CREATE_CHAT_SUBMIT_BUTTON_CANDIDATES = (
+        "button.iva-button:has-text('Создать чат')",
+        "button.iva-button:has-text('Добавить')",
+    )
     GROUP_CHAT_TOGGLE_INPUT = "iva-toggle input[type='checkbox'][role='switch']"
 
     # Поиск по списку чатов слева
@@ -32,6 +52,15 @@ class ChatPage(BasePage):
     CHAT_HEADER = "app-chat-header"
     CHAT_HEADER_INFO = ".chat-header__info"
     CHAT_HEADER_TITLE = ".chat-header__description-title"
+    CHAT_HEADER_MENU_BUTTON = "app-chat-header button.iva-icon-button:has(svg-icon[src*='3-dots'])"
+    CHAT_MENU_CREATE_GROUP_ACTION = (
+        ".option__main-content:has-text('Создать групповой чат'), "
+        ".option:has-text('Создать групповой чат'), "
+        "app-option:has-text('Создать групповой чат'), "
+        "li:has-text('Создать групповой чат'), "
+        "button:has-text('Создать групповой чат'), "
+        "[role='menuitem']:has-text('Создать групповой чат')"
+    )
     MESSAGE_LIST = "app-chat-message-list"
     CHAT_EDITABLE_TITLE_CONTAINER = ".editable-text-container"
     CHAT_EDIT_ICON = ".editable-text-container .edit-icon"
@@ -62,30 +91,48 @@ class ChatPage(BasePage):
         self.get_create_chat_container()
 
     def get_create_chat_container(self):
+        # Быстрый проход без длинных wait_for, чтобы не тратить десятки секунд.
         for selector in self.CREATE_CHAT_CONTAINER_LOCATORS:
             locator = self.page.locator(selector).first
             try:
-                locator.wait_for(state="visible", timeout=3000)
-                return locator
-            except PlaywrightTimeoutError:
+                if locator.count() > 0 and locator.is_visible():
+                    return locator
+            except (PlaywrightError, PlaywrightTimeoutError):
                 continue
+
+        # Короткое активное ожидание (до 3с) появления контейнера.
+        for _ in range(12):
+            for selector in self.CREATE_CHAT_CONTAINER_LOCATORS:
+                locator = self.page.locator(selector).first
+                try:
+                    if locator.count() > 0 and locator.is_visible():
+                        return locator
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+            self.page.wait_for_timeout(250)
+
+        # Fallback: окно может рендериться без отдельного контейнера.
+        for selector in self.CREATE_CHAT_SEARCH_INPUT_CANDIDATES:
+            search_input = self.page.locator(selector).first
+            try:
+                if search_input.count() > 0 and search_input.is_visible():
+                    return self.page
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
         raise AssertionError("Не найден контейнер экрана создания чата")
 
     def search_user_for_new_chat(self, value: str):
         container = self.get_create_chat_container()
-        search_input = container.locator(self.CREATE_CHAT_SEARCH_INPUT).first
+        search_input = self._get_create_chat_search_input(container)
         search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         search_input.fill("")
         search_input.fill(value)
-        container.locator(self.CREATE_CHAT_CONTACT).first.wait_for(
-            state="visible",
-            timeout=config.EXPLICIT_WAIT * 1000,
-        )
+        self.page.wait_for_timeout(300)
 
     def select_user_from_new_chat_results(self, user_text: str):
         container = self.get_create_chat_container()
-        rows = container.locator(self.CREATE_CHAT_CONTACT)
-
+        rows = self._get_create_chat_contact_rows(container)
         rows.first.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         normalized_target = self._normalize_chat_text(user_text)
         local_part = normalized_target.split("@")[0] if "@" in normalized_target else normalized_target
@@ -179,8 +226,28 @@ class ChatPage(BasePage):
 
     def select_user_checkbox_from_new_chat_results(self, user_text: str):
         container = self.get_create_chat_container()
-        row = container.locator(self.CREATE_CHAT_CONTACT).filter(has_text=user_text).first
-        row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        try:
+            row = self._find_user_row_in_create_chat(container, user_text)
+        except AssertionError:
+            # Финальный fallback для вариантов DOM, где строка результата нестандартная:
+            # пытаемся кликнуть по видимому frame чекбокса у строки с текстом пользователя.
+            checkbox_frame_by_user = self.page.locator(
+                "xpath=(//*[contains(normalize-space(text()), '"
+                + user_text
+                + "')]/ancestor::*[.//iva-checkbox][1]//*[contains(@class,'iva-checkbox_frame')])[1]"
+            ).first
+            try:
+                checkbox_frame_by_user.wait_for(state="visible", timeout=3000)
+                self.safe_click(checkbox_frame_by_user)
+                return self
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+
+            # Самый последний fallback: первый видимый checkbox frame в модалке.
+            checkbox_frame = self.page.locator("iva-checkbox .iva-checkbox_frame").first
+            checkbox_frame.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+            self.safe_click(checkbox_frame)
+            return self
 
         def _is_selected() -> bool:
             checkbox_input = row.locator("input[type='checkbox']").first
@@ -220,15 +287,105 @@ class ChatPage(BasePage):
             if _is_selected():
                 return self
 
+        # Последний fallback: выставить состояние чекбокса напрямую через input.
+        checkbox_input = row.locator("input[type='checkbox']").first
+        try:
+            if checkbox_input.count() > 0:
+                checkbox_input.set_checked(True, timeout=2000)
+                self.page.wait_for_timeout(120)
+                if _is_selected():
+                    return self
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
         raise AssertionError(f"Не удалось выбрать чекбокс пользователя в списке: {user_text}")
         return self
 
     def click_create_chat_submit(self):
         container = self.get_create_chat_container()
-        submit_button = container.locator(self.CREATE_CHAT_SUBMIT_BUTTON).first
+        submit_button = self._get_create_chat_submit_button(container)
         submit_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self.safe_click(submit_button)
         return self
+
+    def _get_create_chat_search_input(self, container):
+        for selector in self.CREATE_CHAT_SEARCH_INPUT_CANDIDATES:
+            candidate = container.locator(selector).first
+            try:
+                if candidate.count() > 0 and candidate.is_visible():
+                    return candidate
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return container.locator(self.CREATE_CHAT_SEARCH_INPUT_CANDIDATES[-1]).first
+
+    def _get_create_chat_contact_rows(self, container):
+        for selector in self.CREATE_CHAT_CONTACT_CANDIDATES:
+            rows = container.locator(selector)
+            try:
+                if rows.count() == 0:
+                    continue
+                if rows.first.is_visible():
+                    return rows
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return container.locator(self.CREATE_CHAT_CONTACT)
+
+    def _find_user_row_in_create_chat(self, container, user_text: str):
+        normalized = self._normalize_chat_text(user_text)
+        local_part = normalized.split("@")[0] if "@" in normalized else normalized
+        candidates = [text for text in (user_text, normalized, local_part) if text]
+
+        for selector in self.CREATE_CHAT_CONTACT_CANDIDATES:
+            rows = container.locator(selector)
+            try:
+                if rows.count() == 0:
+                    continue
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+            for text in candidates:
+                row = rows.filter(has_text=text).first
+                try:
+                    if row.count() > 0 and row.is_visible():
+                        return row
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+        # Fallback: если текст не совпал (например отображается ФИО),
+        # берём первый видимый элемент списка с чекбоксом.
+        for selector in self.CREATE_CHAT_CONTACT_CANDIDATES:
+            rows = container.locator(selector)
+            try:
+                total = rows.count()
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+            for idx in range(total):
+                row = rows.nth(idx)
+                try:
+                    if not row.is_visible():
+                        continue
+                    if row.locator("input[type='checkbox']").count() > 0:
+                        return row
+                    if row.locator("iva-checkbox").count() > 0:
+                        return row
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+        raise AssertionError(
+            f"Не найден пользователь в списке добавления участников: '{user_text}'. "
+            f"Проверены селекторы: {', '.join(self.CREATE_CHAT_CONTACT_CANDIDATES)}"
+        )
+
+    def _get_create_chat_submit_button(self, container):
+        for selector in self.CREATE_CHAT_SUBMIT_BUTTON_CANDIDATES:
+            button = container.locator(selector).first
+            try:
+                if button.count() > 0 and button.is_visible():
+                    return button
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return container.locator(self.CREATE_CHAT_SUBMIT_BUTTON_CANDIDATES[0]).first
 
     def rename_opened_chat(self, new_name: str):
         header = self.page.locator(self.CHAT_HEADER).first
@@ -283,6 +440,49 @@ class ChatPage(BasePage):
             timeout=config.EXPLICIT_WAIT * 1000,
         )
         return self
+
+    def open_chat_header_menu(self):
+        header = self.page.locator(self.CHAT_HEADER).first
+        header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        menu_button = header.locator("button.iva-icon-button").filter(
+            has=self.page.locator("svg-icon[src*='3-dots']")
+        ).first
+        menu_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(menu_button)
+
+        action = self.page.locator(self.CHAT_MENU_CREATE_GROUP_ACTION).first
+        action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return self
+
+    def create_group_chat_from_opened_p2p(self):
+        self.open_chat_header_menu()
+
+        action = self.page.locator(self.CHAT_MENU_CREATE_GROUP_ACTION).first
+        action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(action)
+
+        self._wait_for_group_members_step()
+        return self
+
+    def _wait_for_group_members_step(self):
+        for selector in self.CREATE_CHAT_SEARCH_INPUT_CANDIDATES:
+            input_locator = self.page.locator(selector).first
+            try:
+                input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+                return self
+            except PlaywrightTimeoutError:
+                continue
+
+        for selector in self.CREATE_CHAT_SUBMIT_BUTTON_CANDIDATES:
+            button = self.page.locator(selector).first
+            try:
+                button.wait_for(state="visible", timeout=2000)
+                return self
+            except PlaywrightTimeoutError:
+                continue
+
+        raise AssertionError("Не открылся шаг добавления участников при создании группового чата")
 
     @staticmethod
     def _normalize_chat_text(value: str) -> str:
