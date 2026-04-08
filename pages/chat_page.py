@@ -82,6 +82,32 @@ class ChatPage(BasePage):
         "app-option:has-text('Изменить текст'), "
         "[role='menuitem']:has-text('Изменить текст')"
     )
+    MESSAGE_CONTEXT_COPY_ACTION = (
+        ".dropdown-item:has-text('Копировать текст'), "
+        ".option:has-text('Копировать текст'), "
+        "app-option:has-text('Копировать текст'), "
+        "[role='menuitem']:has-text('Копировать текст')"
+    )
+    MESSAGE_CONTEXT_COPY_LINK_ACTION = (
+        ".dropdown-item:has-text('Копировать ссылку'), "
+        ".option:has-text('Копировать ссылку'), "
+        "app-option:has-text('Копировать ссылку'), "
+        "[role='menuitem']:has-text('Копировать ссылку')"
+    )
+    MESSAGE_CONTEXT_DELETE_ACTION = (
+        ".dropdown-item_remove:has-text('Удалить'), "
+        ".dropdown-item:has-text('Удалить'), "
+        ".option:has-text('Удалить'), "
+        "app-option:has-text('Удалить'), "
+        "[role='menuitem']:has-text('Удалить')"
+    )
+    MESSAGE_DELETE_CONFIRM_BUTTON_CANDIDATES = (
+        "app-confirm-dialog button.iva-button:has-text('Удалить')",
+        "app-dialog button.iva-button:has-text('Удалить')",
+        "[role='dialog'] button.iva-button:has-text('Удалить')",
+        "button.iva-button:has-text('Удалить')",
+        "button:has-text('Удалить')",
+    )
 
     # Поле ввода и отправка
     MESSAGE_INPUT = "textarea.chat-message-list__textarea"
@@ -635,6 +661,43 @@ class ChatPage(BasePage):
         )
         return self
 
+    def click_copy_message_action(self):
+        copy_action = self.page.locator(self.MESSAGE_CONTEXT_COPY_ACTION).first
+        copy_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(copy_action)
+        return self
+
+    def click_copy_message_link_action(self):
+        copy_link_action = self.page.locator(self.MESSAGE_CONTEXT_COPY_LINK_ACTION).first
+        copy_link_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(copy_link_action)
+        return self
+
+    def click_delete_message_action(self):
+        delete_action = self.page.locator(self.MESSAGE_CONTEXT_DELETE_ACTION).first
+        delete_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(delete_action)
+        return self
+
+    def confirm_delete_message_action(self):
+        confirm_button = self._find_first_visible(
+            self.MESSAGE_DELETE_CONFIRM_BUTTON_CANDIDATES,
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
+        self.safe_click(confirm_button)
+        return self
+
+    def try_confirm_delete_message_action(self, timeout_ms: int = 3000) -> bool:
+        try:
+            confirm_button = self._find_first_visible(
+                self.MESSAGE_DELETE_CONFIRM_BUTTON_CANDIDATES,
+                timeout=timeout_ms,
+            )
+            self.safe_click(confirm_button)
+            return True
+        except (PlaywrightTimeoutError, PlaywrightError):
+            return False
+
     def get_last_own_message_text(self) -> str:
         own_message = self.page.locator(self.SELF_MESSAGE).last
         own_message.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -647,6 +710,26 @@ class ChatPage(BasePage):
         while time.time() < end_time:
             actual = self.get_last_own_message_text()
             if actual == expected_text:
+                return True
+            self.page.wait_for_timeout(250)
+        return False
+
+    def paste_clipboard_to_message_input(self) -> str:
+        input_locator = self.page.locator(self.MESSAGE_INPUT).first
+        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        input_locator.click()
+        input_locator.fill("")
+        input_locator.press("Control+V")
+        return input_locator.input_value()
+
+    def wait_for_message_absent(self, text: str, timeout_ms: int = 15000) -> bool:
+        end_time = time.time() + timeout_ms / 1000
+        while time.time() < end_time:
+            target = self.page.locator(self.MESSAGE_LIST).get_by_text(text, exact=True)
+            try:
+                if target.count() == 0:
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
                 return True
             self.page.wait_for_timeout(250)
         return False

@@ -189,3 +189,128 @@ def test_37_edit_last_sent_message_p2p(driver):
     assert chat_page.wait_for_last_own_message_text(edited_text), (
         f"Текст последнего сообщения не обновился до ожидаемого значения: '{edited_text}'"
     )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("38")
+def test_38_copy_last_sent_message_and_resend_p2p(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    original_text = generate_unique_message("autotest-38")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(original_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message завершился неуспешно"
+    assert chat_page.wait_for_message(original_text), (
+        f"Не удалось дождаться отправленного сообщения: {original_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+    chat_page.click_copy_message_action()
+
+    copied_text = chat_page.paste_clipboard_to_message_input()
+    assert copied_text == original_text, (
+        f"Скопированный текст не совпадает с исходным. "
+        f"Ожидалось: '{original_text}', получено: '{copied_text}'"
+    )
+
+    with driver.expect_response("**/send-message") as resend_response_info:
+        chat_page.click_send()
+
+    resend_response = resend_response_info.value
+    assert resend_response.ok, "Запрос повторной отправки сообщения завершился неуспешно"
+
+    payload = resend_response.json()
+    assert payload["message"] == original_text, (
+        f"В повторном send-message вернулся не тот текст: {payload}"
+    )
+    assert chat_page.wait_for_last_own_message_text(original_text), (
+        "Последнее отправленное сообщение не совпадает со скопированным текстом"
+    )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("39")
+def test_39_copy_message_link_and_send_p2p(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    original_text = generate_unique_message("gamma.hi-tech.org autotest-39")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(original_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message завершился неуспешно"
+    assert chat_page.wait_for_message(original_text), (
+        f"Не удалось дождаться отправленного сообщения: {original_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+    chat_page.click_copy_message_link_action()
+
+    copied_link = chat_page.paste_clipboard_to_message_input().strip()
+    assert "gamma.hi-tech.org" in copied_link, (
+        f"Скопированная ссылка не содержит ожидаемый домен: {copied_link}"
+    )
+
+    with driver.expect_response("**/send-message") as resend_response_info:
+        chat_page.click_send()
+
+    resend_response = resend_response_info.value
+    assert resend_response.ok, "Запрос отправки скопированной ссылки завершился неуспешно"
+
+    payload = resend_response.json()
+    assert payload["message"] == copied_link, (
+        f"В send-message вернулся не тот текст ссылки: {payload}"
+    )
+    assert chat_page.wait_for_last_own_message_text(copied_link), (
+        "Последнее отправленное сообщение не совпадает со скопированной ссылкой"
+    )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("40")
+def test_40_delete_last_sent_message_p2p(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    message_text = generate_unique_message("autotest-40")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(message_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message завершился неуспешно"
+    assert chat_page.wait_for_message(message_text), (
+        f"Не удалось дождаться отправленного сообщения: {message_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+
+    with driver.expect_response(
+        lambda r: (
+            "/api/rest/chats/" in r.url
+            and (
+                ("/messages/" in r.url and r.request.method == "DELETE")
+                or ("/messages/remove" in r.url and r.request.method in ("POST", "DELETE"))
+            )
+        )
+    ) as delete_response_info:
+        chat_page.click_delete_message_action()
+        chat_page.try_confirm_delete_message_action(timeout_ms=3500)
+
+    delete_response = delete_response_info.value
+    assert delete_response.ok, f"Запрос удаления сообщения завершился неуспешно: {delete_response.status}"
+    assert chat_page.wait_for_message_absent(message_text), (
+        f"Сообщение не удалилось из списка сообщений: {message_text}"
+    )
