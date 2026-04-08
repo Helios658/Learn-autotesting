@@ -153,3 +153,39 @@ def test_36_convert_existing_p2p_chat_to_group_chat(driver):
     assert rename_error is None, (
         f"Не удалось переименовать чат после конвертации p2p->group: {rename_error}"
     )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("37")
+def test_37_edit_last_sent_message_p2p(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    original_text = generate_unique_message("autotest-37")
+    edited_text = generate_unique_message("autotest-37-edit")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(original_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message завершился неуспешно"
+    assert chat_page.wait_for_message(original_text), (
+        f"Не удалось дождаться отправленного сообщения: {original_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+    chat_page.click_edit_message_action()
+
+    with driver.expect_response(
+        lambda r: "/api/rest/chats/" in r.url and "/messages/" in r.url and r.request.method in ("PUT", "PATCH")
+    ) as edit_response_info:
+        chat_page.send_message(edited_text)
+
+    edit_response = edit_response_info.value
+    assert edit_response.ok, f"Запрос редактирования завершился неуспешно: {edit_response.status}"
+
+    assert chat_page.wait_for_last_own_message_text(edited_text), (
+        f"Текст последнего сообщения не обновился до ожидаемого значения: '{edited_text}'"
+    )

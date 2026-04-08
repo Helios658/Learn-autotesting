@@ -3,6 +3,7 @@ from pages.base_page import BasePage
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import re
+import time
 
 class ChatPage(BasePage):
     # Навигация
@@ -71,6 +72,15 @@ class ChatPage(BasePage):
         "input[placeholder*='Название']",
         "input[placeholder*='название']",
         "[contenteditable='true']",
+    )
+    SELF_MESSAGE = "app-chat-message.chat-message_self"
+    MESSAGE_BUBBLE = ".chat-message__bubble"
+    MESSAGE_TEXT = ".chat-message__text"
+    MESSAGE_CONTEXT_EDIT_ACTION = (
+        ".dropdown-item:has-text('Изменить текст'), "
+        ".option:has-text('Изменить текст'), "
+        "app-option:has-text('Изменить текст'), "
+        "[role='menuitem']:has-text('Изменить текст')"
     )
 
     # Поле ввода и отправка
@@ -593,3 +603,50 @@ class ChatPage(BasePage):
             return True
         except (PlaywrightError, PlaywrightTimeoutError):
             return False
+
+    def open_context_menu_for_last_own_message(self):
+        own_message = self.page.locator(self.SELF_MESSAGE).last
+        own_message.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        action_button_selector = getattr(
+            self,
+            "MESSAGE_ACTION_BUTTON",
+            "button.chat-message__action-button:has(svg-icon[src*='3-dots'])",
+        )
+        action_button = own_message.locator(action_button_selector).first
+        try:
+            action_button.wait_for(state="visible", timeout=2500)
+            self.safe_click(action_button)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            bubble = own_message.locator(self.MESSAGE_BUBBLE).first
+            bubble.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+            bubble.click(button="right")
+
+        edit_action = self.page.locator(self.MESSAGE_CONTEXT_EDIT_ACTION).first
+        edit_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return self
+
+    def click_edit_message_action(self):
+        edit_action = self.page.locator(self.MESSAGE_CONTEXT_EDIT_ACTION).first
+        edit_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(edit_action)
+        self.page.locator(self.MESSAGE_INPUT).first.wait_for(
+            state="visible", timeout=config.EXPLICIT_WAIT * 1000
+        )
+        return self
+
+    def get_last_own_message_text(self) -> str:
+        own_message = self.page.locator(self.SELF_MESSAGE).last
+        own_message.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        text_locator = own_message.locator(self.MESSAGE_TEXT).first
+        text_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return (text_locator.inner_text() or "").strip()
+
+    def wait_for_last_own_message_text(self, expected_text: str, timeout_ms: int = 15000) -> bool:
+        end_time = time.time() + timeout_ms / 1000
+        while time.time() < end_time:
+            actual = self.get_last_own_message_text()
+            if actual == expected_text:
+                return True
+            self.page.wait_for_timeout(250)
+        return False
