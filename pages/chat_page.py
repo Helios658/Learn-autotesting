@@ -492,7 +492,7 @@ class ChatPage(BasePage):
         )
         return self
 
-    def open_chat_header_menu(self):
+    def open_chat_header_menu(self, expected_actions=None):
         header = self.page.locator(self.CHAT_HEADER).first
         header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
 
@@ -502,12 +502,14 @@ class ChatPage(BasePage):
         menu_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self.safe_click(menu_button)
 
-        action = self.page.locator(self.CHAT_MENU_CREATE_GROUP_ACTION).first
-        action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        menu_actions = expected_actions or (self.CHAT_MENU_CREATE_GROUP_ACTION,)
+        self._find_first_visible(menu_actions, timeout=config.EXPLICIT_WAIT * 1000)
         return self
 
     def create_group_chat_from_opened_p2p(self):
-        self.open_chat_header_menu()
+        self.open_chat_header_menu(
+            expected_actions=(self.CHAT_MENU_CREATE_GROUP_ACTION,),
+        )
 
         action = self.page.locator(self.CHAT_MENU_CREATE_GROUP_ACTION).first
         action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -774,7 +776,9 @@ class ChatPage(BasePage):
         return False
 
     def click_clear_chat(self):
-        self.open_chat_header_menu()
+        self.open_chat_header_menu(
+            expected_actions=(self.CHAT_MENU_CLEAR_CHAT_ACTION,),
+        )
         action = self.page.locator(self.CHAT_MENU_CLEAR_CHAT_ACTION).first
         action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self.safe_click(action)

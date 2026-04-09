@@ -6,6 +6,7 @@ from pages.chat_page import ChatPage
 from utils.generate_random_message import generate_unique_message
 import time
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from services.chat_flow import ChatFlow
 
 
 @pytest.mark.smoke
@@ -64,49 +65,11 @@ def test_31_send_and_receive_text_message_p2p(two_users):
 @pytest.mark.testcase("35")
 def test_35_create_group_chat_and_capture_chat_id(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+    flow = ChatFlow(driver)
+    participants = flow.pick_group_participants(required_count=2)
+    chat_id = flow.create_group_chat(participants)
 
-    candidate_users = [
-        config.TEST_USER2_EMAIL,
-        config.TEST_LDAP_USER_EMAIL,
-        config.TEST_ADFS_USER_EMAIL,
-        config.USER_EMAIL,
-    ]
-    participants = []
-    for user in candidate_users:
-        if user and user != config.ADMIN_EMAIL and user not in participants:
-            participants.append(user)
-        if len(participants) == 2:
-            break
-
-    assert len(participants) == 2, (
-        "Нужно минимум 2 тестовых пользователя для группового чата "
-        "(например TEST_USER2_EMAIL и TEST_LDAP_USER_EMAIL)."
-    )
-
-    chat_page = ChatPage(driver)
-    chat_page.open()
-    chat_page.click_create_chat()
-    chat_page.enable_group_chat_mode()
-
-    for user in participants:
-        chat_page.search_user_for_new_chat(user)
-        chat_page.select_user_checkbox_from_new_chat_results(user)
-
-    with driver.expect_response(
-        lambda r: "/api/rest/chats/create-group-chat" in r.url and r.request.method == "POST"
-    ) as response_info:
-        chat_page.click_create_chat_submit()
-
-    response = response_info.value
-    assert response.ok, f"Запрос create-group-chat завершился неуспешно: {response.status}"
-
-    payload = response.json()
-    chat_id = payload.get("id")
-    assert chat_id, f"В ответе create-group-chat отсутствует id: {payload}"
-    assert re.match(
-        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", chat_id, re.IGNORECASE
-    ), f"id группового чата не похож на UUID: {chat_id}"
-
+    chat_page = flow.chat_page
     unique_group_name = f"autotest-group-{chat_id[:8]}"
     chat_page.rename_opened_chat(unique_group_name)
 
@@ -345,34 +308,10 @@ def test_41_clear_p2p_chat(driver):
 @pytest.mark.testcase("42")
 def test_42_clear_group_chat(driver):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
-
-    candidate_users = [
-        config.TEST_USER2_EMAIL,
-        config.TEST_LDAP_USER_EMAIL,
-        config.TEST_ADFS_USER_EMAIL,
-        config.USER_EMAIL,
-    ]
-    participants = []
-    for user in candidate_users:
-        if user and user != config.ADMIN_EMAIL and user not in participants:
-            participants.append(user)
-        if len(participants) == 2:
-            break
-
-    assert len(participants) == 2, (
-        "Нужно минимум 2 тестовых пользователя для группового чата "
-        "(например TEST_USER2_EMAIL и TEST_LDAP_USER_EMAIL)."
-    )
-
-    chat_page = ChatPage(driver)
-    chat_page.open()
-    chat_page.click_create_chat()
-    chat_page.enable_group_chat_mode()
-
-    for user in participants:
-        chat_page.search_user_for_new_chat(user)
-        chat_page.select_user_checkbox_from_new_chat_results(user)
-        chat_page.click_create_chat_submit()
+    flow = ChatFlow(driver)
+    participants = flow.pick_group_participants(required_count=2)
+    chat_id = flow.create_group_chat(participants)
+    chat_page = flow.chat_page
 
     chat_page.click_clear_chat()
 
