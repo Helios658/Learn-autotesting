@@ -6,6 +6,7 @@ from datetime import datetime
 from utils.artifacts import save_artifacts
 from config import config
 import socket
+import re
 from playwright.sync_api import Error as PlaywrightError
 load_dotenv()
 
@@ -29,6 +30,21 @@ def _resolve_browser_launcher(playwright_instance: Playwright):
         resolved = "chromium"
 
     return resolved, getattr(playwright_instance, resolved)
+
+def _safe_name(name: str) -> str:
+    name = name.strip().replace(" ", "_")
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
+
+
+def _build_test_video_name(node) -> str:
+    testcase_marker = node.get_closest_marker("testcase")
+    testcase_id = None
+    if testcase_marker and testcase_marker.args:
+        testcase_id = str(testcase_marker.args[0])
+
+    if testcase_id:
+        return _safe_name(f"tc_{testcase_id}_{node.name}")
+    return _safe_name(node.name)
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
@@ -101,6 +117,14 @@ def driver(request, playwright_instance: Playwright):
 
     context = browser.new_context(**context_kwargs)
 
+    try:
+        context.grant_permissions(
+            ["clipboard-read", "clipboard-write"],
+            origin=config.BASE_URL,
+        )
+    except PlaywrightError as exc:
+        print(f"⚠️ Не удалось выдать clipboard permissions: {exc}")
+
     # ✅ START tracing всегда, сохраняем только при падении
     context.tracing.start(screenshots=True, snapshots=True, sources=True)
 
@@ -153,7 +177,26 @@ def driver(request, playwright_instance: Playwright):
     except PlaywrightError:
         pass
 
+    video_path = None
+    try:
+        if page.video:
+            video_path = Path(page.video.path())
+    except PlaywrightError:
+        video_path = None
+
     context.close()
+
+    if failed and video_path and video_path.exists():
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            videos_dir = Path("artifacts/videos")
+            videos_dir.mkdir(parents=True, exist_ok=True)
+            named_video = videos_dir / f"{_build_test_video_name(request.node)}_{ts}{video_path.suffix or '.webm'}"
+            video_path.replace(named_video)
+            print(f"🎥 Видео падения сохранено: {named_video}")
+        except OSError as exc:
+            print(f"⚠️ Не удалось переименовать видео: {exc}")
+
     browser.close()
 
 @pytest.fixture(scope="session")

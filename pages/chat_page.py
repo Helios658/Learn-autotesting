@@ -720,7 +720,31 @@ class ChatPage(BasePage):
         input_locator.click()
         input_locator.fill("")
         input_locator.press("Control+V")
-        return input_locator.input_value()
+        self.page.wait_for_timeout(150)
+        pasted = (input_locator.input_value() or "").strip()
+        if pasted:
+            return pasted
+
+        try:
+            clipboard_text = self.page.evaluate(
+                """
+                async () => {
+                    try {
+                        return (await navigator.clipboard.readText()) || "";
+                    } catch (e) {
+                        return "";
+                    }
+                }
+                """
+            ).strip()
+        except PlaywrightError:
+            clipboard_text = ""
+
+        if clipboard_text:
+            input_locator.fill(clipboard_text)
+            return clipboard_text
+
+        return pasted
 
     def wait_for_message_absent(self, text: str, timeout_ms: int = 15000) -> bool:
         end_time = time.time() + timeout_ms / 1000
