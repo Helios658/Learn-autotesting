@@ -314,3 +314,80 @@ def test_40_delete_last_sent_message_p2p(driver):
     assert chat_page.wait_for_message_absent(message_text), (
         f"Сообщение не удалилось из списка сообщений: {message_text}"
     )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("41")
+def test_41_clear_p2p_chat(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    chat_page.click_clear_chat()
+
+    with driver.expect_response(
+        lambda r: (
+            "/api/rest/chats/" in r.url
+            and "/clear-history" in r.url
+            and r.request.method == "POST"
+        )
+    ) as clear_response_info:
+        chat_page.confirm_clear_chat()
+
+    response = clear_response_info.value
+
+    assert response.ok, f"Очистка чата завершилась неуспешно: status={response.status}, url={response.url}"
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("42")
+def test_42_clear_group_chat(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    candidate_users = [
+        config.TEST_USER2_EMAIL,
+        config.TEST_LDAP_USER_EMAIL,
+        config.TEST_ADFS_USER_EMAIL,
+        config.USER_EMAIL,
+    ]
+    participants = []
+    for user in candidate_users:
+        if user and user != config.ADMIN_EMAIL and user not in participants:
+            participants.append(user)
+        if len(participants) == 2:
+            break
+
+    assert len(participants) == 2, (
+        "Нужно минимум 2 тестовых пользователя для группового чата "
+        "(например TEST_USER2_EMAIL и TEST_LDAP_USER_EMAIL)."
+    )
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.click_create_chat()
+    chat_page.enable_group_chat_mode()
+
+    for user in participants:
+        chat_page.search_user_for_new_chat(user)
+        chat_page.select_user_checkbox_from_new_chat_results(user)
+        chat_page.click_create_chat_submit()
+
+    chat_page.click_clear_chat()
+
+    with driver.expect_response(
+        lambda r: (
+            "/api/rest/chats/" in r.url
+            and "/clear-history" in r.url
+            and r.request.method == "POST"
+        )
+    ) as clear_response_info:
+        chat_page.confirm_clear_chat()
+
+    response = clear_response_info.value
+
+    assert response.ok, f"Очистка чата завершилась неуспешно: status={response.status}, url={response.url}"
+
+    unique_group_name = f"autotest-group-{chat_id[:8]}"
+    chat_page.rename_opened_chat(unique_group_name)

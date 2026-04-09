@@ -62,6 +62,21 @@ class ChatPage(BasePage):
         "button:has-text('Создать групповой чат'), "
         "[role='menuitem']:has-text('Создать групповой чат')"
     )
+    CHAT_MENU_CLEAR_CHAT_ACTION = (
+    ".option__main-content:has-text('Очистить чат'), "
+    ".option:has-text('Очистить чат'), "
+    "app-option:has-text('Очистить чат'), "
+    "li:has-text('Очистить чат'), "
+    "button:has-text('Очистить чат'), "
+    "[role='menuitem']:has-text('Очистить чат')"
+    )
+    CLEAR_CHAT_CONFIRM_BUTTON_CANDIDATES = (
+        "app-confirm-dialog button.iva-button:has-text('Очистить')",
+        "app-dialog button.iva-button:has-text('Очистить')",
+        "[role='dialog'] button.iva-button:has-text('Очистить')",
+        "button.iva-button:has-text('Очистить')",
+        "button:has-text('Очистить')",
+    )
     MESSAGE_LIST = "app-chat-message-list"
     CHAT_EDITABLE_TITLE_CONTAINER = ".editable-text-container"
     CHAT_EDIT_ICON = ".editable-text-container .edit-icon"
@@ -757,3 +772,18 @@ class ChatPage(BasePage):
                 return True
             self.page.wait_for_timeout(250)
         return False
+
+    def click_clear_chat(self):
+        self.open_chat_header_menu()
+        action = self.page.locator(self.CHAT_MENU_CLEAR_CHAT_ACTION).first
+        action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(action)
+        return self
+
+    def confirm_clear_chat(self):
+        confirm_button = self._find_first_visible(
+            self.CLEAR_CHAT_CONFIRM_BUTTON_CANDIDATES,
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
+        self.safe_click(confirm_button)
+        return self
