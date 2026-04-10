@@ -328,5 +328,5 @@ def test_42_clear_group_chat(driver):
 
     assert response.ok, f"Очистка чата завершилась неуспешно: status={response.status}, url={response.url}"
 
-    unique_group_name = f"autotest-group-{chat_id[:8]}"
+    unique_group_name = f"autotest42-group-{chat_id[:8]}"
     chat_page.rename_opened_chat(unique_group_name)
