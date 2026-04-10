@@ -116,12 +116,45 @@ class ChatPage(BasePage):
         "app-option:has-text('Удалить'), "
         "[role='menuitem']:has-text('Удалить')"
     )
+    MESSAGE_CONTEXT_REPLY_ACTION = (
+        ".dropdown-item:has-text('Ответить'), "
+        ".option:has-text('Ответить'), "
+        "app-option:has-text('Ответить'), "
+        "[role='menuitem']:has-text('Ответить')"
+    )
+    MESSAGE_CONTEXT_FORWARD_ACTION = (
+        ".dropdown-item:has-text('Переслать'), "
+        ".option:has-text('Переслать'), "
+        "app-option:has-text('Переслать'), "
+        "[role='menuitem']:has-text('Переслать')"
+    )
     MESSAGE_DELETE_CONFIRM_BUTTON_CANDIDATES = (
         "app-confirm-dialog button.iva-button:has-text('Удалить')",
         "app-dialog button.iva-button:has-text('Удалить')",
         "[role='dialog'] button.iva-button:has-text('Удалить')",
         "button.iva-button:has-text('Удалить')",
         "button:has-text('Удалить')",
+    )
+    FORWARD_SEARCH_INPUT_CANDIDATES = (
+        "input.search-input[placeholder='Поиск получателей']",
+        "input[placeholder='Поиск получателей']",
+        "app-chat-forward input.search-input",
+    )
+    FORWARD_RECIPIENT_ROW_CANDIDATES = (
+        "app-chat-forward app-chat-creation-contact",
+        "app-chat-forward app-chat-members-adding-user",
+        "app-chat-forward app-contact-list-item",
+        "app-chat-forward .option",
+        "app-chat-forward li",
+        "app-chat-creation-contact",
+        "app-chat-members-adding-user",
+        "app-contact-list-item",
+        ".option",
+        "li",
+    )
+    FORWARD_SUBMIT_BUTTON_CANDIDATES = (
+        "app-chat-forward button.iva-button:has-text('Переслать')",
+        "button.iva-button:has-text('Переслать')",
     )
 
     # Поле ввода и отправка
@@ -695,6 +728,192 @@ class ChatPage(BasePage):
         delete_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         self.safe_click(delete_action)
         return self
+
+    def click_reply_message_action(self):
+        reply_action = self.page.locator(self.MESSAGE_CONTEXT_REPLY_ACTION).first
+        reply_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(reply_action)
+        return self
+
+    def click_forward_message_action(self):
+        forward_action = self.page.locator(self.MESSAGE_CONTEXT_FORWARD_ACTION).first
+        forward_action.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self.safe_click(forward_action)
+        return self
+
+    def is_message_context_menu_closed(self) -> bool:
+        try:
+            reply_visible = self.page.locator(self.MESSAGE_CONTEXT_REPLY_ACTION).first.is_visible()
+            forward_visible = self.page.locator(self.MESSAGE_CONTEXT_FORWARD_ACTION).first.is_visible()
+            return not (reply_visible or forward_visible)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return True
+
+    def forward_last_own_message_to_recipient(self, recipient_text: str):
+        search_input = self._get_forward_search_input()
+        search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        search_input.fill("")
+        search_input.fill(recipient_text)
+        self.page.wait_for_timeout(300)
+
+        recipient_row = self._find_forward_recipient_row(recipient_text)
+        recipient_row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        self._select_forward_recipient(recipient_row, recipient_text)
+
+        forward_button = self._get_forward_submit_button()
+        forward_button.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        for _ in range(20):
+            try:
+                if forward_button.is_enabled():
+                    self.safe_click(forward_button)
+                    return self
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+            self.page.wait_for_timeout(200)
+
+        raise AssertionError("Кнопка 'Переслать' не стала активной в окне пересылки")
+
+    def _get_forward_search_input(self):
+        for selector in self.FORWARD_SEARCH_INPUT_CANDIDATES:
+            candidate = self.page.locator(selector).first
+            try:
+                if candidate.count() > 0 and candidate.is_visible():
+                    return candidate
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return self.page.locator(self.FORWARD_SEARCH_INPUT_CANDIDATES[-1]).first
+
+    def _find_forward_recipient_row(self, recipient_text: str):
+        normalized_target = self._normalize_chat_text(recipient_text)
+        local_part = normalized_target.split("@")[0] if "@" in normalized_target else normalized_target
+
+        for selector in self.FORWARD_RECIPIENT_ROW_CANDIDATES:
+            rows = self.page.locator(selector)
+            try:
+                if rows.count() == 0:
+                    continue
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+            for text in (recipient_text, normalized_target, local_part):
+                if not text:
+                    continue
+                row = rows.filter(has_text=text).first
+                try:
+                    if row.count() > 0 and row.is_visible():
+                        return row
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+            try:
+                if rows.first.is_visible():
+                    return rows.first
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+        # Fallback: строка через текст + ближайший контейнер с чекбоксом.
+        for text in (recipient_text, normalized_target, local_part):
+            if not text:
+                continue
+            by_text_checkbox_container = self.page.locator(
+                "xpath=(//*[contains(translate(normalize-space(text()), "
+                "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '"
+                + text.lower()
+                + "')]/ancestor::*[.//iva-checkbox][1])[1]"
+            ).first
+            try:
+                if by_text_checkbox_container.count() > 0 and by_text_checkbox_container.is_visible():
+                    return by_text_checkbox_container
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+
+        # Последний fallback: первый видимый контейнер с чекбоксом.
+        checkbox_container = self.page.locator("xpath=(//*[.//iva-checkbox])[1]").first
+        try:
+            if checkbox_container.count() > 0 and checkbox_container.is_visible():
+                return checkbox_container
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
+        raise AssertionError(f"Не удалось найти получателя для пересылки: {recipient_text}")
+
+    def _select_forward_recipient(self, recipient_row, recipient_text: str):
+        def _is_selected() -> bool:
+            checkbox_input = recipient_row.locator("input[type='checkbox']").first
+            try:
+                if checkbox_input.count() > 0 and checkbox_input.is_checked():
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+
+            try:
+                aria_checked = (recipient_row.locator("iva-checkbox").first.get_attribute("aria-checked") or "").lower()
+                if aria_checked == "true":
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+            return False
+
+        if _is_selected():
+            return self
+
+        click_targets = [
+            recipient_row.locator("iva-checkbox .iva-checkbox_frame").first,
+            recipient_row.locator("iva-checkbox label").first,
+            recipient_row,
+        ]
+
+        # Дополнительный точечный target: frame чекбокса у строки с текстом получателя.
+        by_text_checkbox_frame = self.page.locator(
+            "xpath=(//*[contains(normalize-space(text()), '"
+            + recipient_text
+            + "')]/ancestor::*[.//iva-checkbox][1]//*[contains(@class,'iva-checkbox_frame')])[1]"
+        ).first
+        click_targets.insert(0, by_text_checkbox_frame)
+
+        for target in click_targets:
+            try:
+                self.safe_click(target)
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+            self.page.wait_for_timeout(120)
+            if _is_selected():
+                return self
+
+        checkbox_input = recipient_row.locator("input[type='checkbox']").first
+        try:
+            if checkbox_input.count() > 0:
+                checkbox_input.set_checked(True, timeout=2000)
+                self.page.wait_for_timeout(120)
+                if _is_selected():
+                    return self
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
+        raise AssertionError(f"Не удалось выбрать получателя для пересылки: {recipient_text}")
+
+    def _get_forward_submit_button(self):
+        for selector in self.FORWARD_SUBMIT_BUTTON_CANDIDATES:
+            button = self.page.locator(selector).first
+            try:
+                if button.count() > 0 and button.is_visible():
+                    return button
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return self.page.locator(self.FORWARD_SUBMIT_BUTTON_CANDIDATES[-1]).first
+
+    def wait_for_chat_title_contains(self, text: str, timeout_ms: int = 15000) -> bool:
+        end_time = time.time() + timeout_ms / 1000
+        while time.time() < end_time:
+            try:
+                header_title = (self.page.locator(self.CHAT_HEADER_TITLE).first.inner_text() or "").lower()
+                if text.lower() in header_title:
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+            self.page.wait_for_timeout(250)
+        return False
 
     def confirm_delete_message_action(self):
         confirm_button = self._find_first_visible(

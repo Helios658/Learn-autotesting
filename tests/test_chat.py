@@ -330,3 +330,79 @@ def test_42_clear_group_chat(driver):
 
     unique_group_name = f"autotest42-group-{chat_id[:8]}"
     chat_page.rename_opened_chat(unique_group_name)
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("43")
+def test_43_reply_to_last_message_p2p(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+
+    original_text = generate_unique_message("autotest-43-original")
+    reply_text = generate_unique_message("autotest-43-reply")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(original_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message для исходного сообщения завершился неуспешно"
+    assert chat_page.wait_for_last_own_message_text(original_text), (
+        f"Не удалось дождаться исходного сообщения перед ответом: {original_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+    chat_page.click_reply_message_action()
+
+    assert chat_page.is_message_context_menu_closed(), (
+        "Список действий с сообщением не закрылся после выбора действия 'Ответить'"
+    )
+
+    with driver.expect_response("**/send-message") as reply_response_info:
+        chat_page.focus_message_input()
+        chat_page.type_message(reply_text)
+        chat_page.click_send()
+
+    reply_response = reply_response_info.value
+    assert reply_response.ok, "Запрос send-message для ответа завершился неуспешно"
+    assert chat_page.wait_for_last_own_message_text(reply_text), (
+        f"Ответ на сообщение не появился в истории: {reply_text}"
+    )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("44")
+def test_44_forward_last_message_to_ldap_user(driver):
+    LoginFlow(driver).login(config.TEST_USER2_EMAIL, config.TEST_USER2_PASSWORD, expect_success=True)
+
+    ldap_user = config.TEST_LDAP_USER_EMAIL
+    assert ldap_user, "Для теста 44 должен быть задан TEST_LDAP_USER_EMAIL."
+    assert ldap_user != config.TEST_USER2_EMAIL, "Получатель пересылки должен отличаться от отправителя."
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_existing_p2p_chat_via_search(config.ADMIN_EMAIL)
+
+    original_text = generate_unique_message("autotest-44-forward")
+
+    with driver.expect_response("**/send-message") as send_response_info:
+        chat_page.send_message(original_text)
+    send_response = send_response_info.value
+    assert send_response.ok, "Запрос send-message для исходного сообщения завершился неуспешно"
+    assert chat_page.wait_for_last_own_message_text(original_text), (
+        f"Не удалось дождаться исходного сообщения перед пересылкой: {original_text}"
+    )
+
+    chat_page.open_context_menu_for_last_own_message()
+    chat_page.click_forward_message_action()
+    assert chat_page.is_message_context_menu_closed(), (
+        "Список действий с сообщением не закрылся после выбора действия 'Переслать'"
+    )
+
+    chat_page.forward_last_own_message_to_recipient(ldap_user)
+
+    ldap_identifier = ldap_user.split("@")[0]
+    assert chat_page.wait_for_chat_title_contains(ldap_identifier), (
+        "После пересылки не открылся чат с LDAP пользователем"
+    )
