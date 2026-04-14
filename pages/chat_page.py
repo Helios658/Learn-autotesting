@@ -43,6 +43,12 @@ class ChatPage(BasePage):
     # Поиск по списку чатов слева
     CHAT_SEARCH_BUTTON = "[e2e-id='contacts-header__search-btn']"
     CHAT_SEARCH_INPUT = "input.search-input[placeholder='Поиск чатов']"
+    CHAT_SEARCH_HIGHLIGHT = (
+        "app-chats-list-item h3.chat-card__title mark, "
+        "app-chats-list-item h3.chat-card__title .highlighted"
+    )
+    CHAT_EMPTY_RESULTS_TEXT = "text=Чатов не найдено"
+    CHAT_EMPTY_RESULTS_TEXT_EN = "text=No chats found"
 
     # Список чатов
     CHAT_LIST_ITEM = "app-chats-list-item"
@@ -607,6 +613,97 @@ class ChatPage(BasePage):
 
         header = self.page.locator(self.CHAT_HEADER).first
         header.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+    def open_chat_search(self):
+        search_input = self.page.locator(self.CHAT_SEARCH_INPUT).first
+        try:
+            if search_input.count() > 0 and search_input.is_visible():
+                return search_input
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+
+        search_button = self.page.locator(self.CHAT_SEARCH_BUTTON).first
+        try:
+            search_button.wait_for(state="visible", timeout=3000)
+            self.safe_click(search_button)
+        except PlaywrightTimeoutError:
+            pass
+
+        search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return search_input
+
+    def set_chat_search_text(self, value: str):
+        search_input = self.open_chat_search()
+        search_input.click()
+        search_input.fill("")
+        if value:
+            search_input.fill(value)
+        self.page.wait_for_timeout(250)
+        return self
+
+    def get_chat_search_value(self) -> str:
+        search_input = self.open_chat_search()
+        return search_input.input_value()
+
+    def is_chat_search_visible(self) -> bool:
+        search_input = self.page.locator(self.CHAT_SEARCH_INPUT).first
+        try:
+            return search_input.is_visible()
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return False
+
+    def get_chat_list_count(self) -> int:
+        chats = self.page.locator(self.CHAT_LIST_ITEM)
+        try:
+            return chats.count()
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return 0
+
+    def has_search_highlight(self, expected_text: str) -> bool:
+        highlighted = self.page.locator(self.CHAT_SEARCH_HIGHLIGHT)
+        try:
+            count = highlighted.count()
+            if count == 0:
+                return False
+
+            normalized_expected = re.sub(r"\W+", "", (expected_text or "").lower())
+            collected = highlighted.evaluate_all(
+                """els => els
+                    .map(el => (el.textContent || '').trim().toLowerCase())
+                    .filter(Boolean)
+                """
+            )
+
+            if not collected:
+                return False
+
+            if not normalized_expected:
+                return True
+
+            normalized_collected_joined = re.sub(r"\W+", "", "".join(collected))
+            if normalized_expected in normalized_collected_joined:
+                return True
+
+            tokenized_expected = [token for token in re.split(r"\W+", (expected_text or "").lower()) if token]
+            if tokenized_expected:
+                raw_joined = " ".join(collected)
+                if all(token in raw_joined for token in tokenized_expected):
+                    return True
+
+            return any(normalized_expected in re.sub(r"\W+", "", text) for text in collected)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return False
+
+    def is_chat_search_empty_state_visible(self) -> bool:
+        ru = self.page.locator(self.CHAT_EMPTY_RESULTS_TEXT).first
+        en = self.page.locator(self.CHAT_EMPTY_RESULTS_TEXT_EN).first
+        for candidate in (ru, en):
+            try:
+                if candidate.count() > 0 and candidate.is_visible():
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return False
 
     def open_most_recent_chat_from_list(self):
         first_chat = self.page.locator(self.CHAT_LIST_ITEM).first

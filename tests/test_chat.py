@@ -1,5 +1,6 @@
 import pytest
 import re
+from urllib.parse import parse_qs, urlparse
 from config import config
 from services.login_flow import LoginFlow
 from pages.chat_page import ChatPage
@@ -406,3 +407,61 @@ def test_44_forward_last_message_to_ldap_user(driver):
     assert chat_page.wait_for_chat_title_contains(ldap_identifier), (
         "После пересылки не открылся чат с LDAP пользователем"
     )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("45")
+def test_45_interactive_chat_search(driver):
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    chat_page = ChatPage(driver)
+    chat_page.open()
+    chat_page.open_chat_search()
+
+    total_chats_before_search = chat_page.get_chat_list_count()
+    assert total_chats_before_search > 0, "Перед началом теста список чатов пуст."
+
+    chat_page.set_chat_search_text("")
+    assert chat_page.get_chat_search_value() == "", "Строка поиска должна быть пустой после очистки."
+    assert chat_page.is_chat_search_visible(), "Строка поиска не должна закрываться после очистки."
+
+    total_chats_after_clear = chat_page.get_chat_list_count()
+    assert total_chats_after_clear >= total_chats_before_search, (
+        "После очистки поиска должен отображаться полный список чатов."
+    )
+
+    def search_and_get_payload(search_term: str) -> dict:
+        def is_expected_search_response(response) -> bool:
+            if "/api/rest/chats/search" not in response.url:
+                return False
+            try:
+                query = parse_qs(urlparse(response.url).query)
+                return query.get("searchCriteria", [""])[0] == search_term
+            except Exception:
+                return False
+
+        with driver.expect_response(is_expected_search_response) as search_response_info:
+            chat_page.set_chat_search_text(search_term)
+
+        search_response = search_response_info.value
+        assert search_response.ok, (
+            f"Поисковый запрос '{search_term}' завершился неуспешно: {search_response.status}"
+        )
+        return search_response.json()
+
+    payload_check = search_and_get_payload("test@test")
+    assert payload_check.get("data"), "Поиск 'test@test' должен вернуть результаты."
+
+    payload_no_results = search_and_get_payload("провер1")
+    assert not payload_no_results.get("data"), "Поиск 'провер1' не должен вернуть результаты."
+    assert chat_page.is_chat_search_empty_state_visible(), (
+        "При поиске 'провер1' должен отображаться empty state 'Чатов не найдено / No chats found'."
+    )
+
+    payload_email = search_and_get_payload("test@test1")
+    data = payload_email.get("data", [])
+    expected_user_email = "test@test1.ru"
+    assert any(
+        any((user.get("name") or "").lower() == expected_user_email for user in (chat.get("users") or []))
+        for chat in data
+    ), f"В ответе /chats/search не найден пользователь {expected_user_email}."
