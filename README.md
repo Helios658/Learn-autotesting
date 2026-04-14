@@ -71,3 +71,11 @@ git add --all :!.env :!.env.* :!*.secret :!*.key :!last_generated_password.txt
 ## CI артефакты
 - `report.xml` (JUnit)
 - `allure-results/` (сырые данные для Allure Report/TestOps)
+
+# Тестовые файлы для кейса 45
+
+- `sample.png`
+- `sample.jpg`
+- `sample.jpeg`
+
+Минимальные валидные изображения 1x1 для автотестов загрузки вложений в чат.

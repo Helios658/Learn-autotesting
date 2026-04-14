@@ -465,3 +465,71 @@ def test_45_interactive_chat_search(driver):
         any((user.get("name") or "").lower() == expected_user_email for user in (chat.get("users") or []))
         for chat in data
     ), f"В ответе /chats/search не найден пользователь {expected_user_email}."
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("46")
+def test_46_send_image_attachments_p2p(two_users):
+    page_a = two_users["a"]
+    page_a1 = two_users["a1"]
+
+    LoginFlow(page_a).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+    LoginFlow(page_a1).login(config.TEST_USER2_EMAIL, config.TEST_USER2_PASSWORD, expect_success=True)
+
+    chat_a = ChatPage(page_a)
+    chat_a1 = ChatPage(page_a1)
+
+    chat_a.open()
+    chat_a.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+    chat_a1.open()
+    chat_a1.open_existing_p2p_chat_via_search(config.ADMIN_EMAIL)
+
+    file_paths = [
+        "tests/resources/chat_attachments/sample.jpg",
+        "tests/resources/chat_attachments/sample.png",
+        "tests/resources/chat_attachments/sample.jpeg",
+    ]
+
+    for file_path in file_paths:
+        file_name = file_path.split("/")[-1]
+        chat_a.close_attachment_preview_if_open()
+        own_count_before = chat_a.get_message_bubble_count()
+        peer_count_before = chat_a1.get_message_bubble_count()
+
+        with page_a.expect_response("**/send-message") as response_info:
+            chat_a.attach_file_via_dialog(file_path)
+            assert chat_a.get_message_input_value() == "", "Строка ввода должна оставаться пустой"
+            chat_a.click_send()
+
+        response = response_info.value
+        assert response.ok, f"Запрос send-message завершился неуспешно для {file_name}"
+
+        assert chat_a.wait_for_message_bubble_count_at_least(own_count_before + 1), (
+            f"В истории чата у A не появилось новое сообщение после отправки файла: {file_name}"
+        )
+        assert chat_a.is_last_own_message_without_text(), (
+            "В отправленном бабле с файлом не должно быть текста"
+        )
+
+        assert chat_a1.wait_for_message_bubble_count_at_least(peer_count_before + 1, timeout_ms=20000), (
+            f"Пользователь A1 не получил новое сообщение с файлом: {file_name}"
+        )
+
+        chat_a1.open_attachment_in_last_message(file_name=file_name, source="peer")
+        assert chat_a1.has_visible_image_preview(), (
+            f"Пользователь A1 не увидел превью изображения: {file_name}"
+        )
+        assert chat_a1.close_attachment_preview_if_open(), (
+            f"Пользователь A1 не смог закрыть просмотр вложения: {file_name}"
+        )
+        assert not chat_a1.is_attachment_preview_open(), (
+            f"У пользователя A1 просмотр вложения остался открыт: {file_name}"
+        )
+
+        chat_a.open_attachment_in_last_message(file_name=file_name)
+        assert chat_a.has_visible_image_preview(), (
+            f"Не удалось увидеть превью изображения после открытия файла: {file_name}"
+        )
+        assert chat_a.close_attachment_preview_if_open(), (
+            f"Пользователь A не смог закрыть просмотр вложения: {file_name}"
+        )

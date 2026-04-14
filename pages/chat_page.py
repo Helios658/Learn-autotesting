@@ -167,6 +167,22 @@ class ChatPage(BasePage):
     MESSAGE_INPUT = "textarea.chat-message-list__textarea"
     SEND_BUTTON = "button.chat-message-list__send-button"
 
+    ATTACH_BUTTON_CANDIDATES = (
+        "button:has(svg-icon[src*='attach.svg'])",
+        ".chat-message-list__attach-button",
+        "svg-icon[src*='attach.svg']",
+    )
+    ATTACHMENT_PREVIEW_CLOSE_BUTTON_CANDIDATES = (
+        "button:has(svg-icon[src*='close.svg'])",
+        "svg-icon[src*='close.svg']",
+        "button[aria-label*='close' i]",
+        "button[title*='close' i]",
+        "button:has(svg path[d*='M20 5.415'])",
+        "[role='dialog'] button:has(svg-icon[src*='close.svg'])",
+        ".iva-modal button:has(svg-icon[src*='close.svg'])",
+    )
+    FILE_INPUT = "input[type='file']"
+
     def open(self):
         self.page.goto(f"{config.BASE_URL}/v2/iva/home/chats", wait_until="domcontentloaded")
         self.page.locator(self.OPEN_CHATS_TAB).first.wait_for(
@@ -733,6 +749,233 @@ class ChatPage(BasePage):
     # =========================
     # Сообщения
     # =========================
+
+    def _get_attach_button(self):
+        return self._find_first_visible(self.ATTACH_BUTTON_CANDIDATES, timeout=config.EXPLICIT_WAIT * 1000)
+
+    def attach_file_via_dialog(self, file_path: str):
+        attach_button = self._get_attach_button()
+
+        try:
+            with self.page.expect_file_chooser(timeout=5000) as chooser_info:
+                self.safe_click(attach_button)
+            chooser = chooser_info.value
+            chooser.set_files(file_path)
+            return self
+        except PlaywrightTimeoutError:
+            # В некоторых сборках filechooser-событие не прилетает, хотя есть input[type=file].
+            file_input = self.page.locator(self.FILE_INPUT).first
+            file_input.wait_for(state="attached", timeout=config.EXPLICIT_WAIT * 1000)
+            file_input.set_input_files(file_path)
+        return self
+
+    def get_message_input_value(self) -> str:
+        input_locator = self.page.locator(self.MESSAGE_INPUT).first
+        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return input_locator.input_value()
+
+    def get_message_input_placeholder(self) -> str:
+        input_locator = self.page.locator(self.MESSAGE_INPUT).first
+        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return (input_locator.get_attribute("placeholder") or "").strip()
+
+    def wait_for_attachment_name_in_chat(self, file_name: str, timeout_ms: int = 15000) -> bool:
+        try:
+            self.page.locator(self.MESSAGE_LIST).first.get_by_text(file_name, exact=False).last.wait_for(
+                state="visible",
+                timeout=timeout_ms,
+            )
+            return True
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return False
+
+    def get_message_bubble_count(self) -> int:
+        message_list = self.page.locator(self.MESSAGE_LIST).first
+        message_list.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        return message_list.locator(self.MESSAGE_BUBBLE).count()
+
+    def wait_for_message_bubble_count_at_least(self, minimum_count: int, timeout_ms: int = 15000) -> bool:
+        deadline = time.time() + timeout_ms / 1000
+
+        while time.time() < deadline:
+            try:
+                if self.get_message_bubble_count() >= minimum_count:
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                pass
+
+            self.page.wait_for_timeout(250)
+
+        return False
+
+    def is_last_own_message_without_text(self) -> bool:
+        own_message = self.page.locator(self.SELF_MESSAGE).last
+        own_message.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+
+        text_nodes = own_message.locator(self.MESSAGE_TEXT)
+        try:
+            count = text_nodes.count()
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return True
+
+        if count == 0:
+            return True
+
+        for idx in range(count):
+            try:
+                text = (text_nodes.nth(idx).inner_text() or "").strip()
+                if text:
+                    return False
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return True
+
+    def open_attachment_in_last_message(self, file_name: str | None = None, source: str = "self"):
+        if source == "self":
+            base_messages = self.page.locator(self.SELF_MESSAGE)
+        elif source == "peer":
+            base_messages = self.page.locator("app-chat-message:not(.chat-message_self)")
+        else:
+            base_messages = self.page.locator("app-chat-message")
+
+        message_container = base_messages.last
+        if file_name:
+            msg_count = base_messages.count()
+            for idx in range(msg_count - 1, -1, -1):
+                msg = base_messages.nth(idx)
+                try:
+                    if msg.get_by_text(file_name, exact=False).count() > 0:
+                        message_container = msg
+                        break
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+        message_container.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
+        bubble = message_container.locator(self.MESSAGE_BUBBLE).first
+        search_scope = bubble if bubble.count() > 0 else message_container
+
+        attachment = None
+        if file_name:
+            candidate = search_scope.get_by_text(file_name, exact=False).first
+            if candidate.count() > 0:
+                attachment = candidate
+
+        if attachment is None:
+            fallback_selectors = (
+                ".chat-message__file",
+                ".chat-message__attachment",
+                "a[href*='http']",
+                "img",
+            )
+            for selector in fallback_selectors:
+                candidate = search_scope.locator(selector).first
+                if candidate.count() == 0:
+                    continue
+                try:
+                    candidate.wait_for(state="visible", timeout=1000)
+                    attachment = candidate
+                    break
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+        if attachment is None and source == "peer":
+            # Фолбэк: ищем вложение среди всех входящих сообщений, если в last peer bubble
+            # вложение не отрендерилось в ожидаемой разметке.
+            peer_messages = self.page.locator("app-chat-message:not(.chat-message_self)")
+            peer_count = peer_messages.count()
+            for idx in range(peer_count - 1, -1, -1):
+                msg = peer_messages.nth(idx)
+                bubble = msg.locator(self.MESSAGE_BUBBLE).first
+                scope = bubble if bubble.count() > 0 else msg
+                for selector in (".chat-message__file", ".chat-message__attachment", "a[href*='http']", "img"):
+                    candidate = scope.locator(selector).first
+                    if candidate.count() == 0:
+                        continue
+                    try:
+                        candidate.wait_for(state="visible", timeout=800)
+                        attachment = candidate
+                        break
+                    except (PlaywrightError, PlaywrightTimeoutError):
+                        continue
+                if attachment is not None:
+                    break
+
+        if attachment is None:
+            raise AssertionError("Не удалось найти вложение в сообщении")
+
+        self.safe_click(attachment)
+        self.page.wait_for_timeout(800)
+        return self
+
+    def has_visible_image_preview(self) -> bool:
+        image_candidates = self.page.locator("img")
+        try:
+            total = image_candidates.count()
+        except (PlaywrightError, PlaywrightTimeoutError):
+            return False
+
+        for idx in range(total):
+            img = image_candidates.nth(idx)
+            try:
+                if not img.is_visible():
+                    continue
+                width = img.evaluate("el => el.naturalWidth || 0")
+                if width and int(width) > 0:
+                    return True
+            except (PlaywrightError, PlaywrightTimeoutError, ValueError, TypeError):
+                continue
+        return False
+
+    def close_attachment_preview_if_open(self) -> bool:
+        if not self.is_attachment_preview_open():
+            return True
+
+        for _ in range(5):
+            clicked = False
+            for selector in self.ATTACHMENT_PREVIEW_CLOSE_BUTTON_CANDIDATES:
+                buttons = self.page.locator(selector)
+                try:
+                    total = buttons.count()
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    continue
+
+                for idx in range(total - 1, -1, -1):
+                    close_btn = buttons.nth(idx)
+                    try:
+                        if not close_btn.is_visible():
+                            continue
+                        self.safe_click(close_btn)
+                        clicked = True
+                        break
+                    except (PlaywrightError, PlaywrightTimeoutError):
+                        continue
+                if clicked:
+                    break
+
+            if not clicked:
+                try:
+                    self.page.keyboard.press("Escape")
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    pass
+
+            self.page.wait_for_timeout(250)
+            if not self.is_attachment_preview_open():
+                return True
+
+        return False
+
+    def is_attachment_preview_open(self) -> bool:
+        for selector in self.ATTACHMENT_PREVIEW_CLOSE_BUTTON_CANDIDATES:
+            try:
+                buttons = self.page.locator(selector)
+                total = buttons.count()
+                for idx in range(total):
+                    if buttons.nth(idx).is_visible():
+                        return True
+            except (PlaywrightError, PlaywrightTimeoutError):
+                continue
+        return False
+
     def focus_message_input(self):
         input_locator = self.page.locator(self.MESSAGE_INPUT).first
         input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
