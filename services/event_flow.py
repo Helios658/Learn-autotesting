@@ -54,6 +54,10 @@ class EventFlow:
     def open_event_from_list(self, target_event_id: str):
         scroller = self.driver.locator(self.EVENT_LIST_SCROLLER).first
         scroller.wait_for(state="visible", timeout=15000)
+        try:
+            scroller.evaluate("el => { el.scrollTop = 0; }")
+        except PlaywrightError:
+            pass
 
         expected_name = (self._last_created_registration_event_name or "").strip()
         if expected_name:
@@ -84,10 +88,21 @@ class EventFlow:
             for locator in name_locators:
                 try:
                     if locator.count() > 0 and locator.is_visible():
-                        self.event_page.safe_click(locator, timeout=2500)
-                        current_name = self.event_page.get_event_name()
-                        if expected_name in current_name:
-                            return locator
+                        click_targets = [
+                            locator.locator("button.enter-button").first,
+                            locator.locator("h3.conference-name").first,
+                            locator,
+                        ]
+                        for click_target in click_targets:
+                            try:
+                                if click_target.count() == 0 or not click_target.is_visible():
+                                    continue
+                                self.event_page.safe_click(click_target, timeout=2500)
+                                current_name = self.event_page.get_event_name()
+                                if expected_name in current_name:
+                                    return locator
+                            except PlaywrightError:
+                                continue
                 except PlaywrightError:
                     continue
 
@@ -105,11 +120,36 @@ class EventFlow:
                 card = cards.nth(idx)
                 try:
                     href = (card.locator("a[href]").first.get_attribute("href") or "")
-                    if target_event_id not in href:
+                    text = (card.inner_text() or "").strip()
+                    href_matches = target_event_id in href
+                    name_matches = bool(expected_name) and expected_name in text
+
+                    if not href_matches and not name_matches:
                         continue
-                    self.event_page.safe_click(card, timeout=2000)
-                    if target_event_id in (self.driver.url or ""):
-                        return card
+
+                    candidate_click_targets = [
+                        card.locator("button.enter-button").first,
+                        card.locator("h3.conference-name").first,
+                        card.locator(f"a[href*='{target_event_id}']").first,
+                        card.locator("a[href]").first,
+                        card,
+                    ]
+
+                    for click_target in candidate_click_targets:
+                        try:
+                            if click_target.count() == 0 or not click_target.is_visible():
+                                continue
+                            self.event_page.safe_click(click_target, timeout=2500)
+
+                            if target_event_id in (self.driver.url or ""):
+                                return card
+
+                            if expected_name:
+                                current_name = self.event_page.get_event_name()
+                                if expected_name in current_name:
+                                    return card
+                        except PlaywrightError:
+                            continue
                 except PlaywrightError:
                     continue
 
@@ -535,6 +575,7 @@ class EventFlow:
                 login_page.click_login_button()
 
             guest_page.wait_for_load_state("domcontentloaded")
+            registration_page.click_register_if_visible(timeout_ms=7_000)
 
             joined = registration_page.wait_until_event_starts_and_enter(timeout_ms=90_000)
             return guest_page.url, joined
@@ -564,6 +605,7 @@ class EventFlow:
                 login_page.click_login_button()
 
             guest_page.wait_for_load_state("domcontentloaded")
+            registration_page.click_register_if_visible(timeout_ms=7_000)
             auth_ok = login_page.wait_for_successful_login(timeout=30)
             if not auth_ok:
                 raise AssertionError(
