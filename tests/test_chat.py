@@ -1,5 +1,4 @@
 import pytest
-import re
 from urllib.parse import parse_qs, urlparse
 from config import config
 from services.login_flow import LoginFlow
@@ -533,3 +532,235 @@ def test_46_send_image_attachments_p2p(two_users):
         assert chat_a.close_attachment_preview_if_open(), (
             f"Пользователь A не смог закрыть просмотр вложения: {file_name}"
         )
+
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("47")
+def test_47_typing_status_p2p_and_group_two_users(two_users):
+    page_a = two_users["a"]
+    page_a1 = two_users["a1"]
+
+    LoginFlow(page_a).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+    LoginFlow(page_a1).login(config.TEST_USER2_EMAIL, config.TEST_USER2_PASSWORD, expect_success=True)
+
+    chat_a = ChatPage(page_a)
+    chat_a1 = ChatPage(page_a1)
+
+    third_user_candidates = [
+        getattr(config, "TEST_LDAP_USER_EMAIL", None),
+        getattr(config, "TEST_ADFS_USER_EMAIL", None),
+        getattr(config, "USER_EMAIL", None),
+    ]
+    third_user_email = next(
+        (
+            user for user in third_user_candidates
+            if user and user not in {config.ADMIN_EMAIL, config.TEST_USER2_EMAIL}
+        ),
+        None,
+    )
+
+    assert third_user_email, (
+        "Нужен третий тестовый пользователь для конвертации p2p -> group. "
+        "Заполни TEST_LDAP_USER_EMAIL, TEST_ADFS_USER_EMAIL или USER_EMAIL."
+    )
+
+    def typing_request_matcher(response) -> bool:
+        return "/api/rest/chats/" in response.url and "/typing" in response.url
+
+    def assert_typing_request_from_sender(sender_page, receiver_page, sender_action):
+        receiver_typing_requests: list[str] = []
+
+        def on_receiver_response(response):
+            if typing_request_matcher(response):
+                receiver_typing_requests.append(response.url)
+
+        receiver_page.on("response", on_receiver_response)
+        try:
+            with sender_page.expect_response(typing_request_matcher, timeout=15000) as typing_response_info:
+                sender_action()
+
+            assert typing_response_info.value.ok, (
+                f"Typing-запрос отправителя завершился неуспешно: {typing_response_info.value.status}"
+            )
+
+            receiver_page.wait_for_timeout(500)
+        finally:
+            receiver_page.remove_listener("response", on_receiver_response)
+
+        if receiver_typing_requests:
+            print(f"[DEBUG] Receiver typing requests detected: {receiver_typing_requests}")
+
+    def get_receiver_typing_status(chat_page: ChatPage, timeout_ms: int = 8000) -> str:
+        try:
+            status = chat_page.wait_for_typing_status_visible(timeout_ms=timeout_ms)
+            if status.strip():
+                return status
+        except Exception:
+            pass
+
+        if hasattr(chat_page, "wait_for_any_chat_list_typing_status"):
+            try:
+                status = chat_page.wait_for_any_chat_list_typing_status(timeout_ms=timeout_ms)  # type: ignore[attr-defined]
+                if status.strip():
+                    return status
+            except AssertionError:
+                pass
+
+        for candidate in (config.ADMIN_EMAIL, config.TEST_USER2_EMAIL, third_user_email):
+            if not candidate:
+                continue
+            try:
+                status = chat_page.wait_for_chat_list_typing_status(candidate, timeout_ms=2500)
+                if status.strip():
+                    return status
+            except AssertionError:
+                continue
+
+        raise AssertionError("Не найден typing-статус у получателя ни в header, ни в списке чатов.")
+
+    def trigger_typing_until_status(
+        sender_page,
+        receiver_page,
+        sender_chat: ChatPage,
+        receiver_chat: ChatPage,
+        message_prefix: str,
+        max_wait_ms: int = 25000,
+    ) -> str:
+        deadline = time.time() + max_wait_ms / 1000
+        attempt = 0
+
+        while time.time() < deadline:
+            attempt += 1
+
+            assert_typing_request_from_sender(
+                sender_page=sender_page,
+                receiver_page=receiver_page,
+                sender_action=lambda: sender_chat.type_message_with_keyboard(
+                    generate_unique_message(f"{message_prefix}-{attempt}"),
+                    delay_ms=120,
+                ),
+            )
+
+            try:
+                status = get_receiver_typing_status(receiver_chat, timeout_ms=2000).lower()
+                if ("печатает" in status) or ("typing" in status):
+                    return status
+            except AssertionError:
+                pass
+
+            receiver_page.wait_for_timeout(350)
+
+        raise AssertionError(f"Не удалось поймать typing-статус у получателя за {max_wait_ms} мс.")
+
+    def wait_group_creation_modal_closed(page, timeout_ms: int = 15000):
+        modal_candidates = (
+            "app-chat-members-adding",
+            "app-add-members-modal",
+            "app-chat-creation",
+        )
+        deadline = time.time() + timeout_ms / 1000
+
+        while time.time() < deadline:
+            any_visible = False
+
+            for selector in modal_candidates:
+                locator = page.locator(selector).first
+                try:
+                    if locator.count() > 0 and locator.is_visible():
+                        any_visible = True
+                        break
+                except Exception:
+                    continue
+
+            if not any_visible:
+                return
+
+            page.wait_for_timeout(300)
+
+        raise AssertionError("Модалка создания группового чата не закрылась.")
+
+    def rename_group_chat_with_retry(chat_page: ChatPage, new_name: str, timeout_ms: int = 15000):
+        deadline = time.time() + timeout_ms / 1000
+        last_error = None
+
+        while time.time() < deadline:
+            try:
+                chat_page.rename_opened_chat(new_name)
+                chat_page.close_chat_secondary_panel_if_open(timeout_ms=5000)
+                return
+            except Exception as exc:
+                last_error = exc
+                chat_page.page.wait_for_timeout(500)
+
+        raise AssertionError(f"Не удалось переименовать групповой чат: {last_error}")
+
+    def open_chat_by_name_with_retry(chat_page: ChatPage, chat_name: str, timeout_ms: int = 20000):
+        deadline = time.time() + timeout_ms / 1000
+        last_error = None
+
+        while time.time() < deadline:
+            try:
+                chat_page.set_chat_search_text(chat_name)
+                chat_page.open_existing_p2p_chat_via_search(chat_name)
+                chat_page.set_chat_search_text("")
+                return
+            except Exception as exc:
+                last_error = exc
+                try:
+                    chat_page.set_chat_search_text("")
+                except Exception:
+                    pass
+                chat_page.page.wait_for_timeout(500)
+
+        raise AssertionError(f"Не удалось открыть чат '{chat_name}': {last_error}")
+
+    chat_a.open()
+    chat_a1.open()
+
+    chat_a.open_existing_p2p_chat_via_search(config.TEST_USER2_EMAIL)
+    chat_a1.open_existing_p2p_chat_via_search(config.ADMIN_EMAIL)
+
+    chat_a.set_chat_search_text("")
+    chat_a1.set_chat_search_text("")
+
+    p2p_status = trigger_typing_until_status(
+        sender_page=page_a,
+        receiver_page=page_a1,
+        sender_chat=chat_a,
+        receiver_chat=chat_a1,
+        message_prefix="autotest-47-p2p-typing",
+        max_wait_ms=25000,
+    )
+
+    assert ("печатает" in p2p_status) or ("typing" in p2p_status), (
+        f"В p2p не найден typing-статус. Получено: {p2p_status}"
+    )
+
+    chat_a.create_group_chat_from_opened_p2p()
+    chat_a.search_user_for_new_chat(third_user_email)
+    chat_a.select_user_checkbox_from_new_chat_results(third_user_email)
+    chat_a.click_create_chat_submit()
+
+    wait_group_creation_modal_closed(page_a, timeout_ms=15000)
+
+    group_name = generate_unique_message("autotest-47-group")
+    page_a.wait_for_timeout(1000)
+    rename_group_chat_with_retry(chat_a, group_name, timeout_ms=15000)
+
+    page_a.wait_for_timeout(1000)
+    page_a1.wait_for_timeout(1500)
+
+    open_chat_by_name_with_retry(chat_a1, group_name, timeout_ms=20000)
+
+    group_status = trigger_typing_until_status(
+        sender_page=page_a,
+        receiver_page=page_a1,
+        sender_chat=chat_a,
+        receiver_chat=chat_a1,
+        message_prefix="autotest-47-group-typing",
+        max_wait_ms=25000,
+    )
+
+    assert ("печатает" in group_status) or ("typing" in group_status), (
+        f"В group chat не найден typing-статус. Получено: {group_status}"
+    )
