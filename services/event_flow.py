@@ -60,10 +60,8 @@ class EventFlow:
             pass
 
         expected_name = (self._last_created_registration_event_name or "").strip()
-        try:
+        if expected_name:
             self.event_page.search_event_in_list(expected_name)
-        except (AssertionError, PlaywrightError, PlaywrightTimeoutError):
-            pass
 
         targeted_locators = [
             self.driver.locator(f"{self.EVENT_CARDS}:has(a[href*='{target_event_id}'])").first,
@@ -529,52 +527,17 @@ class EventFlow:
             f"Не удалось получить registration-link из буфера обмена: {registration_url}"
         )
 
-    def get_registration_link_from_current_event(self) -> str:
-        """
-        Копирует registration-link из уже открытой карточки мероприятия.
-        Без возврата в список, поиска и повторного открытия мероприятия.
-        """
-        self.driver.wait_for_load_state("domcontentloaded")
-        self.event_page.close_event_start_popup_if_present()
-
-        # Даем UI немного стабилизироваться после сохранения черновика
-        self.driver.wait_for_timeout(1000)
-        self.event_page.click_copy_registration_link()
-
-        deadline = time.time() + 10
-        registration_url = ""
-        while time.time() < deadline:
-            try:
-                registration_url = self._read_link_from_clipboard().strip()
-            except PlaywrightError:
-                registration_url = ""
-
-            if registration_url.startswith("http") or "join:" in registration_url:
-                return registration_url
-
-            self.driver.wait_for_timeout(500)
-            self.event_page.close_event_start_popup_if_present()
-            try:
-                self.event_page.click_copy_registration_link()
-            except PlaywrightError:
-                pass
-
-        raise AssertionError(
-            f"Не удалось получить registration-link из буфера обмена текущего мероприятия: {registration_url}"
-        )
-
     def _ensure_registration_link_controls_ready(self, target_event_id: str):
         button = self.driver.locator(self.event_page.REGISTRATION_LINK_COPY_BUTTON).first
 
-        for attempt in range(5):
+        for attempt in range(3):
             self.driver.wait_for_load_state("domcontentloaded")
             try:
-                self.driver.wait_for_load_state("networkidle", timeout=10_000)
+                self.driver.wait_for_load_state("networkidle", timeout=7_000)
             except PlaywrightTimeoutError:
                 pass
 
             self.event_page.close_event_start_popup_if_present()
-            self.driver.wait_for_timeout(800)
 
             try:
                 if button.is_visible():
@@ -582,14 +545,8 @@ class EventFlow:
             except PlaywrightError:
                 pass
 
-            if target_event_id in (self.driver.url or ""):
-                continue
-
-            try:
-                self.event_page.back_to_list()
-                self.open_event_from_list(target_event_id)
-            except (AssertionError, PlaywrightError, PlaywrightTimeoutError):
-                self.driver.wait_for_timeout(1200)
+            self.event_page.back_to_list()
+            self.open_event_from_list(target_event_id)
 
         raise AssertionError(
             f"Кнопка копирования registration-link не появилась для мероприятия {target_event_id}. URL={self.driver.url}"
@@ -655,13 +612,35 @@ class EventFlow:
                     f"Не удалось завершить авторизацию по registration-link. URL после логина: {guest_page.url}"
                 )
 
-            registration_page.click_register_if_visible(timeout_ms=7_000)
-            registration_completed = registration_page.is_registration_completed(timeout_ms=30_000)
+            # Явно проверяем, что регистрация действительно завершилась в UI, иначе письмо не придет.
+            registration_completed = registration_page.is_registration_completed(timeout_ms=20_000)
             if not registration_completed:
                 raise AssertionError(
-                    "Не удалось подтвердить завершение регистрации после логина. "
+                    "Авторизация прошла, но регистрация на мероприятие не завершилась. "
                     f"Текущий URL: {guest_page.url}"
                 )
+
+            # DEBUG: фиксируем состояние перед ожиданием письма
+            print(f"🧪 REG_DEBUG: auth_ok={auth_ok}, registration_completed={registration_completed}")
+            print(f"🧪 REG_DEBUG: guest_page.url={guest_page.url}")
+
+            try:
+                import os
+                os.makedirs("artifacts", exist_ok=True)
+
+                guest_page.screenshot(
+                    path="artifacts/test27_registration_state_before_mail.png",
+                    full_page=True
+                )
+                with open("artifacts/test27_registration_state_before_mail_url.txt", "w", encoding="utf-8") as f:
+                    f.write(f"{guest_page.url}\n")
+
+                print("🧪 REG_DEBUG: saved artifacts/test27_registration_state_before_mail.png")
+            except Exception as exc:
+                print(f"⚠️ REG_DEBUG: failed to save registration debug artifacts: {exc!r}")
+
+            guest_page.wait_for_timeout(1200)
+
             return guest_context, guest_page
         except (PlaywrightError, PlaywrightTimeoutError, AssertionError, ValueError, TypeError):
             guest_context.close()
