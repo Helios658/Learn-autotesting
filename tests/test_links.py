@@ -470,8 +470,8 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
     mail_page = mail_page_session
     invitation_baseline = mail_page.snapshot_invitation_emails()
 
-    event_id = flow.create_event_draft_with_registration(return_to_list=False)
-    registration_url = flow.get_registration_link_for_event(event_id)
+    flow.create_event_draft_with_registration(return_to_list=False)
+    registration_url = flow.get_registration_link_from_current_event()
 
     assert registration_url, "Не получили ссылку регистрации"
     assert registration_url.startswith("http") or "join:" in registration_url, (
