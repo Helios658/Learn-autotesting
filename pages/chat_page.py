@@ -11,17 +11,6 @@ class ChatPage(BasePage):
 
     # Создание / открытие p2p через "+"
     CLICK_CREATE_CHAT = "button.iva-round-button[iva-size='s'][iva-color='primary']"
-    CLICK_CREATE_CHAT_CANDIDATES = (
-        "button.iva-round-button[iva-size='s'][iva-color='primary']",
-        "button.iva-round-button[iva-color='primary']",
-        "[e2e-id='contacts-header__create-btn']",
-        "[e2e-id='chats-header__create-btn']",
-        "button:has(svg-icon[src*='plus'])",
-        "button[aria-label*='создать' i]",
-        "button[aria-label*='create' i]",
-        "button[title*='создать' i]",
-        "button[title*='create' i]",
-    )
     CREATE_CHAT_CONTAINER_LOCATORS = [
         "app-chat-creation",
         "app-chat-members-adding",
@@ -70,12 +59,6 @@ class ChatPage(BasePage):
     CHAT_HEADER = "app-chat-header"
     CHAT_HEADER_INFO = ".chat-header__info"
     CHAT_HEADER_TITLE = ".chat-header__description-title"
-    CHAT_TYPING_STATUS_CANDIDATES = (
-        ".chat-header__typing",
-        ".chat-header__status",
-        "[class*='typing']",
-        "[class*='status']",
-    )
     CHAT_HEADER_MENU_BUTTON = "app-chat-header button.iva-icon-button:has(svg-icon[src*='3-dots'])"
     CHAT_MENU_CREATE_GROUP_ACTION = (
         ".option__main-content:has-text('Создать групповой чат'), "
@@ -179,16 +162,6 @@ class ChatPage(BasePage):
         "app-chat-forward button.iva-button:has-text('Переслать')",
         "button.iva-button:has-text('Переслать')",
     )
-    CHAT_SECONDARY_PANEL_CANDIDATES = (
-        "app-chat-content-wrapper.chat-content_secondary",
-        "app-chat-content-wrapper .common-info",
-    )
-
-    CHAT_SECONDARY_CLOSE_BUTTON_CANDIDATES = (
-        "app-chat-content-wrapper.chat-content_secondary button.iva-icon-button:has(svg-icon[src*='close'])",
-        "app-chat-content-wrapper.chat-content_secondary button[aria-label*='close' i]",
-        "app-chat-content-wrapper.chat-content_secondary button[title*='close' i]",
-    )
 
     # Поле ввода и отправка
     MESSAGE_INPUT = "textarea.chat-message-list__textarea"
@@ -220,38 +193,8 @@ class ChatPage(BasePage):
     # Создание / открытие p2p через "+"
     # =========================
     def click_create_chat(self):
-        try:
-            container = self.get_create_chat_container()
-            if container:
-                return self
-        except AssertionError:
-            pass
-
-        for selector in self.CLICK_CREATE_CHAT_CANDIDATES:
-            candidates = self.page.locator(selector)
-            try:
-                total = candidates.count()
-            except (PlaywrightError, PlaywrightTimeoutError):
-                continue
-
-            if total == 0:
-                continue
-
-            for idx in range(total):
-                candidate = candidates.nth(idx)
-                try:
-                    if not candidate.is_visible():
-                        continue
-                    self.safe_click(candidate)
-                    self.page.wait_for_timeout(200)
-                    self.get_create_chat_container()
-                    return self
-                except (PlaywrightError, PlaywrightTimeoutError, AssertionError):
-                    continue
-
         self.safe_click(self.CLICK_CREATE_CHAT)
         self.get_create_chat_container()
-        return self
 
     def get_create_chat_container(self):
         # Быстрый проход без длинных wait_for, чтобы не тратить десятки секунд.
@@ -385,12 +328,15 @@ class ChatPage(BasePage):
                 continue
 
         raise AssertionError("Не удалось включить тогл 'Групповой чат'")
+        return self
 
     def select_user_checkbox_from_new_chat_results(self, user_text: str):
         container = self.get_create_chat_container()
         try:
             row = self._find_user_row_in_create_chat(container, user_text)
         except AssertionError:
+            # Финальный fallback для вариантов DOM, где строка результата нестандартная:
+            # пытаемся кликнуть по видимому frame чекбокса у строки с текстом пользователя.
             checkbox_frame_by_user = self.page.locator(
                 "xpath=(//*[contains(normalize-space(text()), '"
                 + user_text
@@ -459,6 +405,7 @@ class ChatPage(BasePage):
             pass
 
         raise AssertionError(f"Не удалось выбрать чекбокс пользователя в списке: {user_text}")
+        return self
 
     def click_create_chat_submit(self):
         container = self.get_create_chat_container()
@@ -598,14 +545,6 @@ class ChatPage(BasePage):
             state="visible",
             timeout=config.EXPLICIT_WAIT * 1000,
         )
-
-        self.page.wait_for_timeout(300)
-        self.close_chat_secondary_panel_if_open(timeout_ms=5000)
-
-        self.page.locator(self.MESSAGE_INPUT).first.wait_for(
-            state="visible",
-            timeout=config.EXPLICIT_WAIT * 1000,
-        )
         return self
 
     def open_chat_header_menu(self, expected_actions=None):
@@ -661,42 +600,28 @@ class ChatPage(BasePage):
     # Открытие существующего чата через поиск по списку
     # =========================
     def open_existing_p2p_chat_via_search(self, user_text: str):
-        search_input = self.open_chat_search()
+        self.safe_click(self.CHAT_SEARCH_BUTTON)
+
+        search_input = self.page.locator(self.CHAT_SEARCH_INPUT).first
+        search_input.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         search_input.fill("")
         search_input.fill(user_text)
-        self.page.wait_for_timeout(250)
+        self.page.locator(self.CHAT_LIST_ITEM).first.wait_for(
+            state="visible",
+            timeout=config.EXPLICIT_WAIT * 1000,
+        )
 
-        row = None
-        for _ in range(8):
-            try:
-                if self.page.locator(self.CHAT_LIST_ITEM).count() == 0:
-                    self.page.wait_for_timeout(300)
-                    continue
-            except (PlaywrightError, PlaywrightTimeoutError):
-                self.page.wait_for_timeout(300)
-                continue
+        row = self.page.locator(self.CHAT_LIST_ITEM).filter(
+            has=self.page.locator(f"mark.highlighted:has-text('{user_text}')")
+        ).first
 
-            highlighted = self.page.locator(self.CHAT_LIST_ITEM).filter(
-                has=self.page.locator(f"mark.highlighted:has-text('{user_text}')")
-            ).first
-            by_title = self.page.locator(self.CHAT_LIST_ITEM).filter(
+        try:
+            row.wait_for(state="visible", timeout=3000)
+        except PlaywrightTimeoutError:
+            row = self.page.locator(self.CHAT_LIST_ITEM).filter(
                 has=self.page.locator(f"{self.CHAT_CARD_TITLE}:has-text('{user_text}')")
             ).first
-
-            for candidate in (highlighted, by_title):
-                try:
-                    if candidate.count() > 0 and candidate.is_visible():
-                        row = candidate
-                        break
-                except (PlaywrightError, PlaywrightTimeoutError):
-                    continue
-
-            if row is not None:
-                break
-            self.page.wait_for_timeout(300)
-
-        if row is None:
-            raise AssertionError(f"Не удалось найти чат через поиск: {user_text}")
+            row.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
 
         card = row.locator(self.CHAT_CARD).first
         card.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
@@ -820,80 +745,6 @@ class ChatPage(BasePage):
             return True
         except (PlaywrightError, PlaywrightTimeoutError):
             return False
-
-    def _typing_status_locator(self):
-        header = self.page.locator(self.CHAT_HEADER).first
-        for selector in self.CHAT_TYPING_STATUS_CANDIDATES:
-            candidate = header.locator(selector).filter(
-                has_text=re.compile(r"(печата|typing)", re.IGNORECASE)
-            ).first
-            try:
-                if candidate.count() > 0:
-                    return candidate
-            except (PlaywrightError, PlaywrightTimeoutError):
-                continue
-
-        return header.get_by_text(re.compile(r"(печата|typing)", re.IGNORECASE)).first
-
-    def wait_for_typing_status_visible(self, timeout_ms: int = 6000) -> str:
-        locator = self._typing_status_locator()
-        locator.wait_for(state="visible", timeout=timeout_ms)
-        return (locator.inner_text(timeout=2000) or "").strip()
-
-    def is_typing_status_hidden(self) -> bool:
-        locator = self._typing_status_locator()
-        try:
-            return not locator.is_visible()
-        except (PlaywrightError, PlaywrightTimeoutError):
-            return True
-
-    def wait_for_chat_list_typing_status(self, chat_text: str, timeout_ms: int = 8000) -> str:
-        deadline = time.time() + timeout_ms / 1000
-        while time.time() < deadline:
-            rows = self.page.locator(self.CHAT_LIST_ITEM).filter(has_text=chat_text)
-            try:
-                total = rows.count()
-            except (PlaywrightError, PlaywrightTimeoutError):
-                self.page.wait_for_timeout(200)
-                continue
-
-            for idx in range(total):
-                row = rows.nth(idx)
-                try:
-                    if not row.is_visible():
-                        continue
-                    typing_locator = row.get_by_text(re.compile(r"(печата|typing)", re.IGNORECASE)).first
-                    if typing_locator.count() > 0 and typing_locator.is_visible():
-                        return (typing_locator.inner_text(timeout=1000) or "").strip()
-                except (PlaywrightError, PlaywrightTimeoutError):
-                    continue
-            self.page.wait_for_timeout(200)
-
-        raise AssertionError(f"Не найден typing-статус в списке чатов для: {chat_text}")
-
-    def wait_for_any_chat_list_typing_status(self, timeout_ms: int = 8000) -> str:
-        deadline = time.time() + timeout_ms / 1000
-        while time.time() < deadline:
-            rows = self.page.locator(self.CHAT_LIST_ITEM)
-            try:
-                total = rows.count()
-            except (PlaywrightError, PlaywrightTimeoutError):
-                self.page.wait_for_timeout(200)
-                continue
-
-            for idx in range(total):
-                row = rows.nth(idx)
-                try:
-                    if not row.is_visible():
-                        continue
-                    typing_locator = row.get_by_text(re.compile(r"(печата|typing)", re.IGNORECASE)).first
-                    if typing_locator.count() > 0 and typing_locator.is_visible():
-                        return (typing_locator.inner_text(timeout=1000) or "").strip()
-                except (PlaywrightError, PlaywrightTimeoutError):
-                    continue
-            self.page.wait_for_timeout(200)
-
-        raise AssertionError("Не найден typing-статус ни в одном чате списка.")
 
     # =========================
     # Сообщения
@@ -1126,61 +977,15 @@ class ChatPage(BasePage):
         return False
 
     def focus_message_input(self):
-        self.close_chat_secondary_panel_if_open(timeout_ms=5000)
-
         input_locator = self.page.locator(self.MESSAGE_INPUT).first
         input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-
-        try:
-            input_locator.focus()
-        except (PlaywrightError, PlaywrightTimeoutError):
-            input_locator.click(force=True)
-
-    def type_message(self, text: str):
-        self.close_chat_secondary_panel_if_open(timeout_ms=5000)
-
-        input_locator = self.page.locator(self.MESSAGE_INPUT).first
-        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-
-        try:
-            input_locator.focus()
-        except (PlaywrightError, PlaywrightTimeoutError):
-            input_locator.click(force=True)
-
-        try:
-            input_locator.fill("")
-        except (PlaywrightError, PlaywrightTimeoutError):
-            pass
-
-        input_locator.type(text, delay=30)
+        input_locator.click()
 
     def type_message(self, text: str):
         input_locator = self.page.locator(self.MESSAGE_INPUT).first
         input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
         input_locator.fill("")
         input_locator.fill(text)
-
-    def type_message_with_keyboard(self, text: str, delay_ms: int = 80):
-        self.close_chat_secondary_panel_if_open(timeout_ms=5000)
-
-        input_locator = self.page.locator(self.MESSAGE_INPUT).first
-        input_locator.wait_for(state="visible", timeout=config.EXPLICIT_WAIT * 1000)
-
-        try:
-            input_locator.focus()
-        except (PlaywrightError, PlaywrightTimeoutError):
-            input_locator.click(force=True)
-
-        try:
-            input_locator.press("Control+A")
-            input_locator.press("Backspace")
-        except (PlaywrightError, PlaywrightTimeoutError):
-            try:
-                input_locator.fill("")
-            except (PlaywrightError, PlaywrightTimeoutError):
-                pass
-
-        input_locator.type(text, delay=delay_ms)
 
     def click_send(self):
         send_button = self.page.locator(self.SEND_BUTTON).first
@@ -1545,53 +1350,3 @@ class ChatPage(BasePage):
         )
         self.safe_click(confirm_button)
         return self
-
-    def is_chat_secondary_panel_open(self) -> bool:
-        for selector in self.CHAT_SECONDARY_PANEL_CANDIDATES:
-            locator = self.page.locator(selector).first
-            try:
-                if locator.count() > 0 and locator.is_visible():
-                    return True
-            except (PlaywrightError, PlaywrightTimeoutError):
-                continue
-        return False
-
-    def close_chat_secondary_panel_if_open(self, timeout_ms: int = 5000):
-        deadline = time.time() + timeout_ms / 1000
-
-        while time.time() < deadline:
-            if not self.is_chat_secondary_panel_open():
-                return self
-
-            for selector in self.CHAT_SECONDARY_CLOSE_BUTTON_CANDIDATES:
-                close_btn = self.page.locator(selector).first
-                try:
-                    if close_btn.count() > 0 and close_btn.is_visible():
-                        self.safe_click(close_btn)
-                        self.page.wait_for_timeout(250)
-                        if not self.is_chat_secondary_panel_open():
-                            return self
-                except (PlaywrightError, PlaywrightTimeoutError):
-                    continue
-
-            try:
-                self.page.keyboard.press("Escape")
-                self.page.wait_for_timeout(250)
-                if not self.is_chat_secondary_panel_open():
-                    return self
-            except (PlaywrightError, PlaywrightTimeoutError):
-                pass
-
-            try:
-                header_info = self.page.locator(self.CHAT_HEADER_INFO).first
-                if header_info.count() > 0 and header_info.is_visible():
-                    self.safe_click(header_info)
-                    self.page.wait_for_timeout(300)
-                    if not self.is_chat_secondary_panel_open():
-                        return self
-            except (PlaywrightError, PlaywrightTimeoutError):
-                pass
-
-            self.page.wait_for_timeout(200)
-
-        raise AssertionError("Не удалось закрыть правую secondary panel чата.")
