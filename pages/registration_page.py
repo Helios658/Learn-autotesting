@@ -111,6 +111,30 @@ class RegistrationPage:
     def click_register(self):
         self._find_visible(self.REGISTER_BUTTON_LOCATORS, timeout_ms=10_000).click()
 
+    def click_register_if_visible(self, timeout_ms: int = 7_000) -> bool:
+        deadline = time.time() + timeout_ms / 1000
+
+        while time.time() < deadline:
+            candidates = self.REGISTER_MODAL_SUBMIT_LOCATORS + self.REGISTER_BUTTON_LOCATORS
+            for selector in candidates:
+                try:
+                    locator = self.page.locator(selector).first
+                    if locator.count() > 0 and locator.is_visible():
+                        try:
+                            if not locator.is_enabled():
+                                continue
+                        except PlaywrightError:
+                            pass
+
+                        locator.click()
+                        return True
+                except PlaywrightError:
+                    continue
+
+            self.page.wait_for_timeout(200)
+
+        return False
+
     def is_registration_completed(self, timeout_ms: int = 15_000) -> bool:
         deadline = time.time() + timeout_ms / 1000
         while time.time() < deadline:

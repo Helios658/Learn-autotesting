@@ -1,4 +1,3 @@
-
 import time
 
 import pytest
@@ -33,6 +32,14 @@ SEARCH_USER_INPUTS = [
 CREATE_ROOM_BUTTON = "button:has-text('Создать')"
 ENTER_BUTTON = "button.enter-button"
 CONNECT_BUTTON = "button:has-text('Подключиться')"
+CLEAR_DRAFT_LINK = ["a.clear-draft", "a:has-text('очистить черновик')", "text=очистить черновик"]
+SAVE_BUTTON = "button:has-text('Сохранить')"
+EDIT_ACTION = "text=Редактировать"
+ROOM_MENU_BUTTONS = [
+    "button.iva-icon-button.relative",
+    "button.iva-icon-button:has(svg path[d*='M8 6.294'])",
+    "button:has(svg-icon[src*='3-dots.svg'])",
+]
 
 
 def _first_visible(page, selectors: list[str] | str, timeout_ms: int = 10_000):
@@ -167,6 +174,62 @@ def _assert_no_connect_prompt(page, timeout_ms: int = 12_000):
     except PlaywrightError:
         pass
 
+
+
+def _pick_new_participant_email(exclude: set[str]) -> str:
+    candidates = [
+        config.TEST_LDAP_USER_EMAIL,
+        config.TEST_ADFS_USER_EMAIL,
+        config.TEST_2FA_USER_EMAIL,
+        config.TEST_UNREGISTED_USER_EMAIL,
+        config.USER_EMAIL,
+    ]
+
+    for email in candidates:
+        normalized = (email or "").strip()
+        if not normalized:
+            continue
+        if "@" not in normalized:
+            continue
+        if normalized in exclude:
+            continue
+        return normalized
+
+    raise AssertionError(
+        "Не нашли второго приглашенного пользователя с валидным email для кейса 51. "
+        "Проверьте TEST_LDAP/TEST_ADFS/TEST_2FA/TEST_UNREGISTED/USER_EMAIL."
+    )
+
+
+def _open_room_edit_mode(page, room_name: str):
+    save_btn = page.locator(SAVE_BUTTON).first
+    try:
+        if save_btn.is_visible(timeout=2_000):
+            return
+    except PlaywrightError:
+        pass
+
+    menu_btn = _first_visible(page, ROOM_MENU_BUTTONS, timeout_ms=8_000)
+    menu_btn.click()
+    _first_visible(page, EDIT_ACTION, timeout_ms=8_000).click()
+    _first_visible(page, SAVE_BUTTON, timeout_ms=8_000)
+
+
+def _remove_invited_user(page, email: str):
+    row = page.locator(f"app-conference-draft-participant:has-text('{email}')").first
+    try:
+        row.wait_for(state="visible", timeout=8_000)
+    except PlaywrightError:
+        row = page.locator(f"xpath=//*[contains(normalize-space(), '{email}')]").first
+        row.wait_for(state="visible", timeout=8_000)
+
+    remove_btn = row.locator("button:has(svg-icon[src*='close.svg'])").first
+    if remove_btn.count() == 0:
+        remove_btn = row.locator("button:has(path[d*='M13.303'])").first
+
+    remove_btn.click(force=True)
+    page.wait_for_timeout(500)
+
 @pytest.mark.smoke
 @pytest.mark.buildtest
 @pytest.mark.testcase("48")
@@ -262,3 +325,80 @@ def test_49_room_without_auto_call_second_user_not_called(two_users):
     assert "conferenceSessionId=" not in final_url, (
         f"Пользователь 2 не должен был быть вызван автоматически. URL: {final_url}"
     )
+
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("50")
+def test_50_clear_room_draft_resets_name(driver):
+    assert config.ADMIN_EMAIL and config.ADMIN_PASSWORD, "Не заданы ADMIN_EMAIL/ADMIN_PASSWORD"
+
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    room_ui = EventPage(driver)
+
+    _open_rooms(driver)
+    _click_rooms_plus(driver)
+
+    draft_name = f"тест 50 {int(time.time())}"
+
+    first_room_title = driver.locator("text=Новая комната").first
+    if first_room_title.is_visible(timeout=5_000):
+        first_room_title.click()
+
+    room_ui.set_event_name(draft_name)
+
+    clear_link = _first_visible(driver, CLEAR_DRAFT_LINK, timeout_ms=10_000)
+    clear_link.click()
+
+    def _name_changed() -> bool:
+        current = (room_ui.get_event_name() or "").strip()
+        return current != draft_name
+
+    for _ in range(20):
+        if _name_changed():
+            break
+        driver.wait_for_timeout(300)
+    else:
+        raise AssertionError(
+            f"Имя черновика не сбросилось после 'очистить черновик'. Было и осталось: {draft_name}"
+        )
+
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("51")
+def test_51_edit_room_replace_invited_user(driver):
+    assert config.ADMIN_EMAIL and config.ADMIN_PASSWORD, "Не заданы ADMIN_EMAIL/ADMIN_PASSWORD"
+    assert config.TEST_USER2_EMAIL, "Не задан TEST_USER2_EMAIL для первого приглашенного"
+
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+
+    room_ui = EventPage(driver)
+
+    _open_rooms(driver)
+    _click_rooms_plus(driver)
+
+    room_name = f"тест 51 {int(time.time())}"
+
+    first_room_title = driver.locator("text=Новая комната").first
+    if first_room_title.is_visible(timeout=5_000):
+        first_room_title.click()
+
+    room_ui.set_event_name(room_name)
+
+    first_invited = config.TEST_USER2_EMAIL
+    second_invited = _pick_new_participant_email({config.ADMIN_EMAIL, first_invited})
+
+    _add_user_to_room(driver, first_invited)
+
+    _finalize_room_creation_if_needed(driver)
+    room_ui.search_event_in_list(room_name)
+    _first_visible(driver, f"text={room_name}", timeout_ms=20_000).click()
+
+    _open_room_edit_mode(driver, room_name)
+    _remove_invited_user(driver, first_invited)
+    _add_user_to_room(driver, second_invited)
+
+    _first_visible(driver, SAVE_BUTTON, timeout_ms=8_000).click()
+
+    _first_visible(driver, f"text={second_invited}", timeout_ms=15_000)
+    assert second_invited in (driver.content() or ""), "После сохранения не нашли нового приглашенного пользователя в карточке комнаты"

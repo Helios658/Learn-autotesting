@@ -467,21 +467,36 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
     LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
     flow = EventFlow(driver)
+    event_page = flow.event_page
     mail_page = mail_page_session
     invitation_baseline = mail_page.snapshot_invitation_emails()
 
-    event_id = flow.create_event_draft_with_registration(return_to_list=False)
-    registration_url = flow.get_registration_link_for_event(event_id)
+    event_page.open()
+    event_page.click_add()
+    event_page.select_simple_event_template()
+    event_page.enable_registration_form()
+    event_page.click_plan_draft()
 
-    assert registration_url, "Не получили ссылку регистрации"
+    registration_url = ""
+    for _ in range(3):
+        event_page.close_event_start_popup_if_present()
+        event_page.click_copy_registration_link()
+        driver.wait_for_timeout(600)
+        registration_url = (flow._read_link_from_clipboard() or "").strip()
+        if registration_url.startswith("http") or "join:" in registration_url:
+            break
+
     assert registration_url.startswith("http") or "join:" in registration_url, (
         f"Некорректная ссылка регистрации: {registration_url}"
     )
 
+    registration_email = "v.kornienko@iva-tech.ru"
+    registration_password = config.USER_PASSWORD
+
     guest_context, guest_page = flow.submit_registration_link_and_login(
         registration_url=registration_url,
-        email=config.USER_EMAIL,
-        password=config.USER_PASSWORD,
+        email=registration_email,
+        password=registration_password,
     )
 
     try:
@@ -494,7 +509,6 @@ def test_27_registration_link_authorized_user(driver, mail_page_session):
 
         guest_page.goto(invited_join_link, wait_until="domcontentloaded")
         guest_page.wait_for_load_state("domcontentloaded")
-        guest_page.wait_for_timeout(2000)
 
         guest_join_page = GuestJoinPage(guest_page)
         is_joined = guest_join_page.finalize_join_from_mail_link(timeout_ms=20_000)
