@@ -40,6 +40,13 @@ ROOM_MENU_BUTTONS = [
     "button.iva-icon-button:has(svg path[d*='M8 6.294'])",
     "button:has(svg-icon[src*='3-dots.svg'])",
 ]
+ROOM_LIST_ITEM_SELECTORS = [
+    "app-conferences-list-item:has(button.enter-button)",
+    "app-rooms-list-item:has(button.enter-button)",
+    "app-room-item:has(button.enter-button)",
+    "virtual-scroller > *:has(button.enter-button)",
+    "div:has(button.enter-button)",
+]
 
 
 def _first_visible(page, selectors: list[str] | str, timeout_ms: int = 10_000):
@@ -57,6 +64,83 @@ def _first_visible(page, selectors: list[str] | str, timeout_ms: int = 10_000):
 
 
 
+
+
+
+def _room_cards_locator(page, timeout_ms: int = 15_000):
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        for selector in ROOM_LIST_ITEM_SELECTORS:
+            locator = page.locator(selector)
+            try:
+                if locator.count() > 0 and locator.first.is_visible():
+                    return locator
+            except PlaywrightError:
+                continue
+        page.wait_for_timeout(250)
+
+    raise AssertionError(f"Не удалось найти карточки комнат по селекторам: {ROOM_LIST_ITEM_SELECTORS}")
+
+
+
+def _collect_visible_room_card_indices(cards_locator, max_scan: int = 200):
+    raw_items = []
+    scan_count = min(cards_locator.count(), max_scan)
+
+    for idx in range(scan_count):
+        card = cards_locator.nth(idx)
+        try:
+            if not card.is_visible():
+                continue
+            box = card.bounding_box()
+            if not box:
+                continue
+            raw_items.append((idx, box.get("y", 0.0), box.get("height", 0.0)))
+        except PlaywrightError:
+            continue
+
+    raw_items.sort(key=lambda x: x[1])
+
+    unique_indices = []
+    seen_y = []
+    for idx, y, _ in raw_items:
+        if any(abs(y - prev_y) <= 6 for prev_y in seen_y):
+            continue
+        seen_y.append(y)
+        unique_indices.append(idx)
+
+    return unique_indices
+
+
+
+def _collect_room_entries_by_enter_button(page, max_scan: int = 250):
+    buttons = page.locator("button.enter-button, button:has(svg-icon[src*='enter.svg'])")
+    entries = []
+    seen_y = []
+
+    scan_count = min(buttons.count(), max_scan)
+    for idx in range(scan_count):
+        btn = buttons.nth(idx)
+        try:
+            if not btn.is_visible():
+                continue
+            box = btn.bounding_box()
+            if not box:
+                continue
+            y = box.get("y", 0.0)
+            if any(abs(y - prev_y) <= 6 for prev_y in seen_y):
+                continue
+            seen_y.append(y)
+
+            card = btn.locator(
+                "xpath=ancestor::*[self::app-conferences-list-item or self::app-room-item or self::div[contains(@class,'ng-star-inserted')]][1]"
+            ).first
+            entries.append((card, btn, y))
+        except PlaywrightError:
+            continue
+
+    entries.sort(key=lambda item: item[2])
+    return [(card, btn) for card, btn, _ in entries]
 
 def _open_rooms(page):
     page.goto(f"{config.BASE_URL}/v2/iva/home/rooms", wait_until="domcontentloaded")
@@ -116,6 +200,15 @@ def _add_user_to_room(page, user_email: str):
     room_ui = EventPage(page)
     room_ui.select_invited_participant_checkbox(user_email)
     room_ui.submit_invite_participant()
+
+    _first_visible(
+        page,
+        [
+            f"text={user_email}",
+            f"xpath=//*[contains(normalize-space(), '{user_email}')]",
+        ],
+        timeout_ms=10_000,
+    )
 
 def _finalize_room_creation_if_needed(page):
     create_btn = page.locator(CREATE_ROOM_BUTTON).first
@@ -402,3 +495,46 @@ def test_51_edit_room_replace_invited_user(driver):
 
     _first_visible(driver, f"text={second_invited}", timeout_ms=15_000)
     assert second_invited in (driver.content() or ""), "После сохранения не нашли нового приглашенного пользователя в карточке комнаты"
+
+
+@pytest.mark.buildtest
+@pytest.mark.testcase("52")
+def test_52_active_room_is_on_top_of_rooms_list(driver):
+    assert config.ADMIN_EMAIL and config.ADMIN_PASSWORD, "Не заданы ADMIN_EMAIL/ADMIN_PASSWORD"
+
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
+    room_ui = EventPage(driver)
+
+    _open_rooms(driver)
+    _click_rooms_plus(driver)
+
+    room_name = f"тест 52 {int(time.time())}"
+
+    first_room_title = driver.locator("text=Новая комната").first
+    if first_room_title.is_visible(timeout=5_000):
+        first_room_title.click()
+
+    room_ui.set_event_name(room_name)
+    _finalize_room_creation_if_needed(driver)
+
+    room_ui.search_event_in_list(room_name)
+    _first_visible(driver, f"text={room_name}", timeout_ms=20_000)
+
+    _enter_room_by_name(driver, room_name)
+    driver.wait_for_function(
+        """() => (window.location.href || '').includes('conferenceSessionId=')""",
+        timeout=20_000,
+    )
+
+    _open_rooms(driver)
+
+    cards = _room_cards_locator(driver, timeout_ms=15_000)
+    visible_indices = _collect_visible_room_card_indices(cards, max_scan=200)
+    assert visible_indices, "Список комнат пуст: не удалось найти ни одной карточки комнаты"
+
+    visible_cards = [cards.nth(idx) for idx in visible_indices]
+    first_text = (visible_cards[0].inner_text() or "").lower()
+    has_active_badge_on_top = ("только началось" in first_text) or ("подключ" in first_text)
+    assert has_active_badge_on_top, (
+        f"Вверху списка должна быть комната с зеленым бейджем активности. Текст первой карточки: {first_text}"
+    )
