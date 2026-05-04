@@ -401,7 +401,7 @@ def test_49_room_without_auto_call_second_user_not_called(two_users):
         first_room_title.click()
 
     room_ui.set_event_name(room_name)
-
+    
     _ensure_auto_call_disabled(page_a)
 
     _add_user_to_room(page_a, config.TEST_USER2_EMAIL)
