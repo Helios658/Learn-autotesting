@@ -31,9 +31,6 @@ def test_55_profile_displays_user_name_and_email(driver):
     driver.wait_for_timeout(1000)
 
     def _get_visible_text_occurrences(text: str) -> int:
-        """
-        Считает видимые обычные текстовые вхождения email на странице.
-        """
         count = 0
 
         locators = [
@@ -64,11 +61,6 @@ def test_55_profile_displays_user_name_and_email(driver):
         return count
 
     def _get_input_value_occurrences(text: str) -> int:
-        """
-        Считает вхождения email в value у input/textarea.
-        Это нужно, потому что поля профиля могут быть не обычным текстом,
-        а значением внутри input.
-        """
         try:
             values = driver.locator("input, textarea").evaluate_all(
                 """elements => elements
@@ -102,7 +94,6 @@ def test_55_profile_displays_user_name_and_email(driver):
 
         return total_count >= 2
 
-    # Ждём, пока профиль догрузит имя и email.
     is_loaded = False
 
     for _ in range(10):
