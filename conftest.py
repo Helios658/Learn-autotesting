@@ -119,11 +119,11 @@ def driver(request, playwright_instance: Playwright):
 
     try:
         context.grant_permissions(
-            ["clipboard-read", "clipboard-write"],
+            ["clipboard-read", "clipboard-write", "microphone", "camera"],
             origin=config.BASE_URL,
         )
     except PlaywrightError as exc:
-        print(f"⚠️ Не удалось выдать clipboard permissions: {exc}")
+        print(f"⚠️ Не удалось выдать browser permissions: {exc}")
 
     # ✅ START tracing всегда, сохраняем только при падении
     context.tracing.start(screenshots=True, snapshots=True, sources=True)

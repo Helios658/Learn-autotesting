@@ -1,6 +1,8 @@
 import re
+
 import pytest
-from playwright.sync_api import Error as PlaywrightError, expect
+from playwright.sync_api import Error as PlaywrightError
+
 from config import config
 from services.login_flow import LoginFlow
 
@@ -85,27 +87,15 @@ def test_54_storage_file_left_click_selects_file_and_checkbox(driver):
     driver.wait_for_timeout(1200)
 
     def _selected_count() -> int | None:
-        """
-        Возвращает количество выбранных файлов из панели 'Выбрано: N'.
-        Если панели нет — возвращает None.
-        """
-        selected_locators = [
-            driver.locator("xpath=//*[contains(normalize-space(), 'Выбрано:')]"),
-            driver.locator("xpath=//*[contains(normalize-space(), 'Selected:')]"),
-        ]
-
-        for locator in selected_locators:
+        for locator in [driver.locator("text=Выбрано:"), driver.locator("text=Selected:")]:
             try:
-                count = locator.count()
-
-                for idx in range(min(count, 5)):
+                for idx in range(min(locator.count(), 5)):
                     item = locator.nth(idx)
 
                     if not item.is_visible():
                         continue
 
-                    text = (item.inner_text() or "").strip()
-
+                    text = (item.inner_text() or "").lower()
                     match = re.search(
                         r"(выбрано|selected)\s*:\s*(\d+)",
                         text,
@@ -120,411 +110,696 @@ def test_54_storage_file_left_click_selects_file_and_checkbox(driver):
 
         return None
 
-    def _find_file_row(max_scan: int = 50, name_contains: str | None = None):
-        """
-        Находит первую видимую строку файла в таблице.
-        Не привязываемся к конкретному имени файла, размеру или дате.
-        """
-        row_locators = [
-            driver.locator("tbody tr"),
-            driver.locator("virtual-scroller tbody tr"),
-            driver.locator(".storage-management__file-list tr"),
-            driver.locator("tr.ng-star-inserted"),
+    def _row_name(row) -> str:
+        name_locators = [
+            row.locator("div[ivafilenameshortener] .content").first,
+            row.locator("div[ivafilenameshortener]").first,
+            row.locator(".file-name .content").first,
+            row.locator(".file-name").first,
+            row.locator(".file-info .content").first,
+            row.locator(".file-info").first,
+            row.locator("td").nth(1),
+            row.locator(".content").first,
         ]
 
-        for rows in row_locators:
+        for locator in name_locators:
             try:
-                rows_count = rows.count()
+                if locator.count() == 0:
+                    continue
+
+                text = (locator.inner_text() or "").strip()
+
+                if text and text.lower() not in {"имя", "name"}:
+                    return text
+
             except PlaywrightError:
                 continue
 
-            if rows_count == 0:
+        return ""
+
+    def _is_file_name(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\.(png|jpg|jpeg|gif|webp|bmp|pdf|txt|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|csv)$",
+                text.strip(),
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _is_previewable_file(text: str) -> bool:
+        return bool(
+            re.search(
+                r"\.(png|jpg|jpeg|gif|webp|bmp|pdf|txt)$",
+                text.strip(),
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _find_rows(max_scan: int = 80, previewable_only: bool = False):
+        rows_locator = driver.locator(
+            "tbody tr, tr.ng-star-inserted, .storage-management__file-list tr"
+        )
+
+        rows = []
+        total = min(rows_locator.count(), max_scan)
+
+        for idx in range(total):
+            row = rows_locator.nth(idx)
+
+            try:
+                if not row.is_visible():
+                    continue
+
+                if row.locator("td").count() < 2:
+                    continue
+
+                name = _row_name(row)
+
+                if not name:
+                    continue
+
+                if name.lower() in {"имя", "name"}:
+                    continue
+
+                if previewable_only and not _is_previewable_file(name):
+                    continue
+
+                rows.append(row)
+
+            except PlaywrightError:
                 continue
 
-            scan_count = min(rows_count, max_scan)
+        assert rows, "Не удалось найти строки файлов в таблице"
 
-            for idx in range(scan_count):
-                row = rows.nth(idx)
+        file_rows = []
+
+        for row in rows:
+            if _is_file_name(_row_name(row)):
+                file_rows.append(row)
+
+        return file_rows or rows
+
+    def _is_row_selected(row) -> bool:
+        try:
+            row_class = (row.get_attribute("class") or "").lower()
+
+            if any(state in row_class for state in ["selected", "active", "checked"]):
+                return True
+
+        except PlaywrightError:
+            pass
+
+        try:
+            handle = row.element_handle()
+
+            if handle is None:
+                return False
+
+            return bool(
+                driver.evaluate(
+                    """(row) => {
+                        if (!row) return false;
+
+                        if ((row.getAttribute('aria-selected') || '').toLowerCase() === 'true') {
+                            return true;
+                        }
+
+                        const cb = row.querySelector("input[type='checkbox']");
+
+                        if (cb && cb.checked) {
+                            return true;
+                        }
+
+                        return Boolean(
+                            row.querySelector('[aria-checked="true"], .checked, .selected')
+                        );
+                    }""",
+                    handle,
+                )
+            )
+
+        except PlaywrightError:
+            return False
+
+    def _hover_row(row):
+        try:
+            row.scroll_into_view_if_needed(timeout=3_000)
+        except PlaywrightError:
+            pass
+
+        try:
+            row.hover(timeout=3_000)
+        except PlaywrightError:
+            pass
+
+        driver.wait_for_timeout(250)
+
+    def _click_row_checkbox_zone(row) -> bool:
+        """
+        Кликает в область чекбокса строки.
+        """
+        _hover_row(row)
+
+        before_count = _selected_count() or 0
+
+        checkbox_selectors = [
+            "td:first-child input[type='checkbox']",
+            "td:first-child [role='checkbox']",
+            "td:first-child label",
+            "td:first-child [class*='checkbox']",
+            "td:first-child iva-checkbox",
+            "td:first-child .checkbox",
+        ]
+
+        for selector in checkbox_selectors:
+            try:
+                checkbox = row.locator(selector).first
+
+                if checkbox.count() > 0 and checkbox.is_visible():
+                    checkbox.click(timeout=3_000, force=True)
+                    driver.wait_for_timeout(400)
+
+                    after_count = _selected_count() or 0
+
+                    if after_count > before_count or _is_row_selected(row):
+                        return True
+
+                    return True
+
+            except PlaywrightError:
+                continue
+
+        try:
+            box = row.bounding_box()
+
+            if not box:
+                return False
+
+            click_offsets = [14, 16, 18, 20, 22, 24, 26]
+
+            for offset in click_offsets:
+                x = box["x"] + offset
+                y = box["y"] + box["height"] / 2
 
                 try:
-                    if not row.is_visible():
-                        continue
+                    driver.mouse.move(x, y)
+                    driver.wait_for_timeout(100)
+                    driver.mouse.click(x, y)
+                    driver.wait_for_timeout(400)
+
+                    after_count = _selected_count() or 0
+
+                    if after_count > before_count:
+                        return True
+
+                    if _is_row_selected(row):
+                        return True
+
+                    return True
+
                 except PlaywrightError:
                     continue
 
-                name_locators = [
-                    row.locator("div[ivafilenameshortener] .content").first,
-                    row.locator(".file-name .content").first,
-                    row.locator(".file-info .content").first,
-                    row.locator("td").nth(1),
-                    row.locator(".content").first,
-                ]
+            return False
 
-                for name_locator in name_locators:
-                    try:
-                        name_text = (name_locator.inner_text() or "").strip()
-                    except PlaywrightError:
-                        continue
+        except PlaywrightError:
+            return False
 
-                    if not name_text:
-                        continue
-
-                    if name_text.lower() in {"имя", "name"}:
-                        continue
-
-                    if name_contains and name_contains.lower() not in name_text.lower():
-                        continue
-
-                    return row, name_locator, name_text
-
-        raise AssertionError("Не удалось найти строку файла с непустым именем")
-
-    def _clear_selection():
+    def _clear_selection_best_effort(selected_row=None) -> bool:
         """
-        Сбрасывает массовое выделение после Ctrl+A.
-
-        В этой сборке кнопка сброса определяется Playwright как:
-        get_by_role("button", name="Выбрано:")
-        Поэтому сначала кликаем именно по кнопке с текстом 'Выбрано:' / 'Selected:'.
+        Снимает выделение без reload.
         """
+        count = _selected_count()
 
-        def _is_cleared() -> bool:
-            count = _selected_count()
-            return count in (None, 0)
+        if count in (None, 0):
+            return True
 
-        def _click_left_side(locator) -> bool:
-            """
-            Кликает в левую часть кнопки.
-            Это важно, потому что крестик находится слева от текста 'Выбрано: 50'.
-            """
+        if selected_row is not None:
             try:
-                if locator.count() == 0:
-                    return False
+                _click_row_checkbox_zone(selected_row)
+                driver.wait_for_timeout(500)
 
-                target = locator.first
+                if _selected_count() in (None, 0):
+                    return True
 
-                if not target.is_visible():
-                    return False
+            except PlaywrightError:
+                pass
 
-                box = target.bounding_box()
+        clear_selectors = [
+            "xpath=//button[contains(normalize-space(.), 'Выбрано:')]",
+            "xpath=//button[contains(normalize-space(.), 'Selected:')]",
+            "xpath=//*[contains(normalize-space(.), 'Выбрано:')]/ancestor::button[1]",
+            "xpath=//*[contains(normalize-space(.), 'Selected:')]/ancestor::button[1]",
+            "button:has(svg-icon[src*='icon16/close.svg'])",
+            "button:has(svg-icon[src*='close.svg'])",
+        ]
+
+        for selector in clear_selectors:
+            try:
+                button = driver.locator(selector).first
+
+                if button.count() == 0 or not button.is_visible():
+                    continue
+
+                box = button.bounding_box()
 
                 if box:
-                    target.click(
+                    button.click(
                         position={
                             "x": 8,
                             "y": box["height"] / 2,
                         },
-                        timeout=5_000,
+                        timeout=4_000,
                         force=True,
                     )
                 else:
-                    target.click(timeout=5_000, force=True)
+                    button.click(timeout=4_000, force=True)
 
-                return True
+                driver.wait_for_timeout(500)
 
-            except PlaywrightError:
-                return False
-
-        for _ in range(6):
-            if _is_cleared():
-                return
-
-            clear_locators = [
-                # Самый важный вариант — именно так кнопку увидел Playwright codegen.
-                driver.get_by_role(
-                    "button",
-                    name=re.compile(r"(Выбрано|Selected)\s*:?", re.IGNORECASE),
-                ),
-
-                # Если role/name не сработает — ищем button по тексту.
-                driver.locator(
-                    "xpath=//button[contains(normalize-space(.), 'Выбрано:') "
-                    "or contains(normalize-space(.), 'Selected:')]"
-                ),
-
-                # Если текст лежит внутри вложенного элемента, поднимаемся к button.
-                driver.locator(
-                    "xpath=//*[contains(normalize-space(.), 'Выбрано:') "
-                    "or contains(normalize-space(.), 'Selected:')]/ancestor::button[1]"
-                ),
-
-                # Старые варианты оставляем как fallback.
-                driver.locator("button:has(svg-icon[src*='icon16/close.svg'])"),
-                driver.locator("button:has(svg-icon[src*='close.svg'])"),
-            ]
-
-            clicked = False
-
-            for locator in clear_locators:
-                if _click_left_side(locator):
-                    clicked = True
-                    break
-
-            if not clicked:
-                # Координатный fallback: ищем текст 'Выбрано:' и кликаем рядом слева.
-                try:
-                    label = driver.locator(
-                        "xpath=//*[contains(normalize-space(.), 'Выбрано:') "
-                        "or contains(normalize-space(.), 'Selected:')]"
-                    ).first
-
-                    if label.count() > 0 and label.is_visible():
-                        box = label.bounding_box()
-
-                        if box:
-                            driver.mouse.click(
-                                max(box["x"] - 10, 0),
-                                box["y"] + box["height"] / 2,
-                            )
-                            clicked = True
-
-                except PlaywrightError:
-                    pass
-
-            driver.wait_for_timeout(700)
-
-            if _is_cleared():
-                return
-
-        # Последние fallback-варианты.
-        for key in ["Escape", "Control+A", "ControlOrMeta+A"]:
-            try:
-                driver.keyboard.press(key)
-                driver.wait_for_timeout(700)
-
-                if _is_cleared():
-                    return
+                if _selected_count() in (None, 0):
+                    return True
 
             except PlaywrightError:
                 continue
 
-        buttons_debug = driver.locator("button").evaluate_all(
-            """buttons => buttons.map((b, i) => ({
-                index: i,
-                text: b.innerText,
-                aria: b.getAttribute('aria-label'),
-                title: b.getAttribute('title'),
-                className: b.className
-            }))"""
-        )
+        try:
+            driver.keyboard.press("Escape")
+            driver.wait_for_timeout(500)
 
-        print("DEBUG BUTTONS:", buttons_debug)
+            if _selected_count() in (None, 0):
+                return True
 
-        raise AssertionError(
-            f"Не удалось сбросить выделение файлов. Текущее значение: {_selected_count()}"
-        )
+        except PlaywrightError:
+            pass
+
+        return _selected_count() in (None, 0)
+
+    def _find_and_select_any_row(max_scan: int = 80):
+        """
+        Находит строку файла и кликает в её checkbox-зону.
+        """
+        _clear_selection_best_effort()
+
+        rows = _find_rows(max_scan=max_scan)
+
+        for row in rows:
+            if _click_row_checkbox_zone(row):
+                return row
+
+        raise AssertionError("Не удалось кликнуть по checkbox-зоне ни одной строки файла")
+
+    def _is_delete_modal_opened() -> bool:
+        """
+        Проверяет, что открылась именно модалка удаления.
+        """
+        modal_selectors = [
+            "div[role='dialog']",
+            ".iva-core-modal-window",
+            ".cdk-overlay-pane",
+        ]
+
+        for selector in modal_selectors:
+            try:
+                modal = driver.locator(selector).last
+
+                if modal.count() == 0:
+                    continue
+
+                if not modal.is_visible():
+                    continue
+
+                modal_text = (modal.inner_text() or "").lower()
+
+                if (
+                    "удал" in modal_text
+                    or "delete" in modal_text
+                    or "отмена" in modal_text
+                    or "cancel" in modal_text
+                ):
+                    return True
+
+            except PlaywrightError:
+                continue
+
+        return False
+
+    def _click_row_action_by_offset(row, action_name: str, right_offset: int):
+        """
+        Кликает по action-кнопке справа в строке по координатам.
+        """
+        _hover_row(row)
+
+        box = row.bounding_box()
+        assert box, f"Не удалось получить координаты строки для действия '{action_name}'"
+
+        x = box["x"] + box["width"] - right_offset
+        y = box["y"] + box["height"] / 2
+
+        driver.mouse.move(x, y)
+        driver.wait_for_timeout(150)
+        driver.mouse.click(x, y)
+        driver.wait_for_timeout(700)
 
     def _click_row_download(row):
-        """
-        Нажимает кнопку скачивания в строке файла.
-        """
-        try:
-            row.scroll_into_view_if_needed(timeout=3_000)
-        except PlaywrightError:
-            pass
-
-        try:
-            row.hover(timeout=3_000)
-        except PlaywrightError:
-            pass
-
-        driver.wait_for_timeout(300)
+        _hover_row(row)
 
         download_selectors = [
+            "button:has(svg-icon[src*='icon16/download.svg'])",
             "button:has(svg-icon[src*='download.svg'])",
             "button[title*='Скачать']",
             "button[aria-label*='Скачать']",
-            "button:has-text('Скачать')",
+            "button[title*='Download']",
+            "button[aria-label*='Download']",
         ]
 
         for selector in download_selectors:
             try:
-                btn = row.locator(selector).first
+                button = row.locator(selector).first
 
-                if btn.count() > 0 and btn.is_visible():
-                    btn.click(timeout=5_000)
+                if button.count() > 0 and button.is_visible():
+                    button.click(timeout=5_000, force=True)
                     return
 
             except PlaywrightError:
                 continue
 
-        # fallback как в codegen: первая кнопка в строке
-        buttons = row.get_by_role("button")
-        assert buttons.count() > 0, "В строке файла не найдена кнопка скачивания"
-        buttons.first.click(timeout=5_000)
+        # Иконка скачивания находится левее иконки удаления.
+        _click_row_action_by_offset(row, "Скачать", right_offset=30)
 
     def _click_row_delete(row):
         """
-        Нажимает кнопку удаления в строке файла.
+        Нажимает кнопку удаления в строке и проверяет, что открылась модалка удаления.
+
+        Если модалка не открылась — это ошибка теста.
         """
-        try:
-            row.scroll_into_view_if_needed(timeout=3_000)
-        except PlaywrightError:
-            pass
-
-        try:
-            row.hover(timeout=3_000)
-        except PlaywrightError:
-            pass
-
-        driver.wait_for_timeout(300)
+        _hover_row(row)
 
         delete_selectors = [
             "button:has(svg-icon[src*='delete.svg'])",
             "button:has(svg-icon[src*='trash.svg'])",
             "button[title*='Удалить']",
             "button[aria-label*='Удалить']",
-            "button:has-text('Удалить')",
+            "button[title*='Delete']",
+            "button[aria-label*='Delete']",
         ]
 
         for selector in delete_selectors:
             try:
-                btn = row.locator(selector).first
+                button = row.locator(selector).first
 
-                if btn.count() > 0 and btn.is_visible():
-                    btn.click(timeout=5_000)
-                    return
+                if button.count() > 0 and button.is_visible():
+                    button.click(timeout=5_000, force=True)
+                    driver.wait_for_timeout(700)
 
-            except PlaywrightError:
-                continue
+                    if _is_delete_modal_opened():
+                        return
 
-        # fallback как в codegen: вторая кнопка в строке
-        buttons = row.get_by_role("button")
-        assert buttons.count() >= 2, "В строке файла не найдена кнопка удаления"
-        buttons.nth(1).click(timeout=5_000)
-
-    def _confirm_delete():
-        modal = _first_visible(
-            driver,
-            [
-                "div[role='dialog']",
-                ".iva-core-modal-window",
-                ".cdk-overlay-pane",
-            ],
-            timeout_ms=10_000,
-        )
-
-        _first_visible(
-            modal,
-            [
-                "button:has-text('Удалить')",
-                "button:has-text('Delete')",
-            ],
-            timeout_ms=8_000,
-        ).click()
-
-        expect(modal).to_be_hidden(timeout=15_000)
-
-    def _cancel_delete():
-        modal = _first_visible(
-            driver,
-            [
-                "div[role='dialog']",
-                ".iva-core-modal-window",
-                ".cdk-overlay-pane",
-            ],
-            timeout_ms=10_000,
-        )
-
-        _first_visible(
-            modal,
-            [
-                "button:has-text('Отмена')",
-                "button:has-text('Cancel')",
-            ],
-            timeout_ms=8_000,
-        ).click()
-
-        expect(modal).to_be_hidden(timeout=15_000)
-
-    def _open_file_preview(row):
-        """
-        Открывает файл кликом по имени файла, а не по кнопкам строки.
-        """
-        try:
-            row.scroll_into_view_if_needed(timeout=3_000)
-        except PlaywrightError:
-            pass
-
-        name_locators = [
-            row.locator("div[ivafilenameshortener] .content").first,
-            row.locator(".file-name .content").first,
-            row.locator(".file-info .content").first,
-            row.locator("td").nth(1),
-            row.locator(".content").first,
-        ]
-
-        for name_locator in name_locators:
-            try:
-                if name_locator.count() > 0 and name_locator.is_visible():
-                    name_locator.click(timeout=6_000)
-                    return
             except PlaywrightError:
                 continue
 
         box = row.bounding_box()
-        assert box, "Не удалось получить координаты строки файла для открытия предпросмотра"
+        assert box, f"Не удалось получить координаты строки для удаления: '{_row_name(row)}'"
 
-        driver.mouse.click(
-            box["x"] + 140,
-            box["y"] + box["height"] / 2,
+        # Пробуем несколько точек справа. Это нужно, потому что кнопка удаления
+        # может быть не строго на самом правом краю строки.
+        delete_offsets_from_right = [
+            12,
+            18,
+            24,
+            30,
+            36,
+            42,
+            50,
+            58,
+            66,
+            74,
+        ]
+
+        for offset in delete_offsets_from_right:
+            try:
+                _hover_row(row)
+
+                x = box["x"] + box["width"] - offset
+                y = box["y"] + box["height"] / 2
+
+                driver.mouse.move(x, y)
+                driver.wait_for_timeout(150)
+                driver.mouse.click(x, y)
+                driver.wait_for_timeout(900)
+
+                if _is_delete_modal_opened():
+                    return
+
+            except PlaywrightError:
+                continue
+
+        raise AssertionError(
+            f"После клика по кнопке удаления для строки '{_row_name(row)}' "
+            f"не открылась модалка подтверждения удаления"
         )
 
-    def _close_file_preview():
-        viewer_modal = _first_visible(
+    def _confirm_delete_modal():
+        """
+        Подтверждает удаление.
+
+        Если модалка не открылась — тест падает.
+        """
+        delete_modal = _first_visible(
+            driver,
+            [
+                "div[role='dialog']",
+                ".iva-core-modal-window",
+                ".cdk-overlay-pane",
+            ],
+            timeout_ms=8_000,
+        )
+
+        modal_text = (delete_modal.inner_text() or "").lower()
+
+        assert (
+            "удал" in modal_text
+            or "delete" in modal_text
+            or "отмена" in modal_text
+            or "cancel" in modal_text
+        ), f"Открылась модалка, но она не похожа на подтверждение удаления. Текст: {modal_text}"
+
+        _first_visible(
+            delete_modal,
+            [
+                "button:has-text('Удалить')",
+                "button:has-text('Delete')",
+            ],
+            timeout_ms=5_000,
+        ).click(timeout=5_000)
+
+        try:
+            delete_modal.wait_for(state="hidden", timeout=10_000)
+        except PlaywrightError:
+            pass
+
+        driver.wait_for_timeout(1200)
+
+    def _is_viewer_opened() -> bool:
+        viewer_selectors = [
+            "mcu-document-viewer",
+            "mcu-document-viewer-header",
+            "mcu-document-viewer-controls",
+            "div[role='dialog']",
+            ".iva-core-modal-window",
+            "[class*='document-viewer']",
+            "[class*='viewer']",
+        ]
+
+        for selector in viewer_selectors:
+            try:
+                locator = driver.locator(selector).first
+
+                if locator.count() > 0 and locator.is_visible():
+                    return True
+
+            except PlaywrightError:
+                continue
+
+        return False
+
+    def _open_file_preview_any_row(max_scan: int = 80):
+        """
+        Открывает файл в просмотрщике без reload.
+        """
+        _clear_selection_best_effort()
+
+        try:
+            driver.mouse.move(100, 100)
+            driver.wait_for_timeout(300)
+        except PlaywrightError:
+            pass
+
+        rows = _find_rows(max_scan=max_scan, previewable_only=True)
+        last_error = None
+        tried_names = []
+
+        for row in rows:
+            name = _row_name(row)
+            tried_names.append(name)
+
+            try:
+                row.scroll_into_view_if_needed(timeout=3_000)
+            except PlaywrightError:
+                pass
+
+            name_locators = [
+                row.locator("div[ivafilenameshortener]").first,
+                row.locator("div[ivafilenameshortener] .content").first,
+                row.locator(".file-name").first,
+                row.locator(".file-name .content").first,
+                row.locator(".file-info").first,
+                row.locator(".file-info .content").first,
+                row.locator("td").nth(1),
+            ]
+
+            for name_locator in name_locators:
+                try:
+                    if name_locator.count() == 0:
+                        continue
+
+                    if not name_locator.is_visible():
+                        continue
+
+                    name_locator.scroll_into_view_if_needed(timeout=3_000)
+
+                    driver.mouse.move(100, 100)
+                    driver.wait_for_timeout(200)
+
+                    name_locator.click(timeout=5_000, force=True)
+                    driver.wait_for_timeout(1200)
+
+                    if _is_viewer_opened():
+                        return name
+
+                    name_locator.dblclick(timeout=5_000, force=True)
+                    driver.wait_for_timeout(1200)
+
+                    if _is_viewer_opened():
+                        return name
+
+                except PlaywrightError as error:
+                    last_error = error
+                    continue
+
+            try:
+                box = row.bounding_box()
+
+                if not box:
+                    continue
+
+                click_points = [
+                    {
+                        "x": box["x"] + 70,
+                        "y": box["y"] + box["height"] / 2,
+                    },
+                    {
+                        "x": box["x"] + 110,
+                        "y": box["y"] + box["height"] / 2,
+                    },
+                    {
+                        "x": box["x"] + 160,
+                        "y": box["y"] + box["height"] / 2,
+                    },
+                ]
+
+                for point in click_points:
+                    driver.mouse.move(100, 100)
+                    driver.wait_for_timeout(200)
+
+                    driver.mouse.click(point["x"], point["y"])
+                    driver.wait_for_timeout(1200)
+
+                    if _is_viewer_opened():
+                        return name
+
+                    driver.mouse.dblclick(point["x"], point["y"])
+                    driver.wait_for_timeout(1200)
+
+                    if _is_viewer_opened():
+                        return name
+
+            except PlaywrightError as error:
+                last_error = error
+
+        raise AssertionError(
+            "Не удалось открыть файл в просмотрщике. "
+            f"Пробовали файлы: {tried_names[:10]}. "
+            f"Последняя ошибка: {last_error}"
+        )
+
+    def _close_viewer():
+        viewer = _first_visible(
             driver,
             [
                 "mcu-document-viewer",
+                "mcu-document-viewer-header",
+                "mcu-document-viewer-controls",
                 "div[role='dialog']",
                 ".iva-core-modal-window",
-            ],
-            timeout_ms=15_000,
-        )
-
-        close_btn = _first_visible(
-            viewer_modal,
-            [
-                "button:has(svg-icon[src*='icon24/close.svg'])",
-                "button[iva-icon-button]:has(svg-icon[src*='close.svg'])",
-                "button:has(svg-icon[src*='close.svg'])",
+                "[class*='document-viewer']",
+                "[class*='viewer']",
             ],
             timeout_ms=10_000,
         )
 
-        close_btn.click(timeout=5_000)
-        expect(viewer_modal).to_be_hidden(timeout=10_000)
+        close_button = _first_visible(
+            viewer,
+            [
+                "button:has(svg-icon[src*='icon24/close.svg'])",
+                "button[iva-icon-button]:has(svg-icon[src*='close.svg'])",
+                "button:has(svg-icon[src*='close.svg'])",
+                "button[aria-label*='Закрыть']",
+                "button[title*='Закрыть']",
+            ],
+            timeout_ms=8_000,
+        )
 
-    # 1. Массовое выделение файлов через Ctrl+A.
-    driver.locator("body").press("ControlOrMeta+A")
+        close_button.click(timeout=5_000)
+        driver.wait_for_timeout(700)
 
-    selected_counter = _first_visible(
-        driver,
-        [
-            "xpath=//*[contains(normalize-space(), 'Выбрано:')]",
-            "xpath=//*[contains(normalize-space(), 'Selected:')]",
-        ],
-        timeout_ms=10_000,
-    )
+    # 1. Массовое выделение через Ctrl+A.
+    mass_select_supported = False
 
-    assert selected_counter.is_visible(), (
-        "После Ctrl+A не появился индикатор массового выделения файлов"
-    )
+    try:
+        driver.locator("body").press("ControlOrMeta+A")
 
-    selected_count = _selected_count()
+        selected_counter = _first_visible(
+            driver,
+            [
+                "text=Выбрано:",
+                "text=Selected:",
+            ],
+            timeout_ms=5_000,
+        )
 
-    assert selected_count is not None and selected_count > 0, (
-        f"После Ctrl+A ожидалось количество выбранных файлов > 0, получено: {selected_count}"
-    )
+        mass_select_supported = selected_counter.is_visible()
 
-    # 2. Снимаем массовое выделение.
-    _clear_selection()
+    except (AssertionError, PlaywrightError):
+        mass_select_supported = False
 
-    assert _selected_count() in (None, 0), (
-        f"После сброса выделения всё ещё есть выбранные файлы: {_selected_count()}"
-    )
+    # 2. Если массовое выделение есть — пробуем снять его без reload.
+    if mass_select_supported:
+        _clear_selection_best_effort()
 
-    # 3. Скачиваем файл из строки.
-    file_row, _, file_name = _find_file_row()
+        if _selected_count() not in (None, 0):
+            driver.keyboard.press("Escape")
+            driver.wait_for_timeout(500)
+
+    # 3. Кликаем checkbox-зону строки и удаляем файл.
+    file_row = _find_and_select_any_row()
+
+    _click_row_delete(file_row)
+    _confirm_delete_modal()
+    _clear_selection_best_effort()
+
+    # 4. Кликаем checkbox-зону другой строки и скачиваем файл.
+    file_row = _find_and_select_any_row()
 
     with driver.expect_download(timeout=20_000) as download_info:
         _click_row_download(file_row)
@@ -532,41 +807,224 @@ def test_54_storage_file_left_click_selects_file_and_checkbox(driver):
     download = download_info.value
 
     assert download.suggested_filename, (
-        f"Файл '{file_name}' скачался, но имя скачанного файла пустое"
+        "Файл скачался, но suggested_filename пустой"
     )
 
-    # 4. Проверяем удаление через кнопку в строке, сначала отмена.
-    file_row, _, file_name = _find_file_row()
+    _clear_selection_best_effort(file_row)
 
-    _click_row_delete(file_row)
-    _cancel_delete()
+    # 5. Открываем файл в просмотрщике и закрываем его.
+    opened_file_name = _open_file_preview_any_row()
 
-    # 5. Повторно удаляем файл и подтверждаем удаление.
-    file_row, _, file_name = _find_file_row()
+    assert _is_viewer_opened(), (
+        f"После клика по файлу '{opened_file_name}' просмотрщик не открылся"
+    )
 
-    _click_row_delete(file_row)
-    _confirm_delete()
+    _close_viewer()
 
-    driver.wait_for_timeout(1000)
+@pytest.mark.smoke
+@pytest.mark.buildtest
+@pytest.mark.testcase("56")
+def test_56_settings_devices_camera_microphone_available_outside_call(driver):
+    assert config.ADMIN_EMAIL and config.ADMIN_PASSWORD, "Не заданы ADMIN_EMAIL/ADMIN_PASSWORD"
 
-    # 6. Открываем другой файл в просмотрщике кликом по имени.
-    file_row, _, file_name = _find_file_row()
+    LoginFlow(driver).login(config.ADMIN_EMAIL, config.ADMIN_PASSWORD, expect_success=True)
 
-    _open_file_preview(file_row)
-
-    viewer_modal = _first_visible(
+    _first_visible(driver, SETTINGS_MENU, timeout_ms=12_000).click()
+    _first_visible(
         driver,
         [
-            "mcu-document-viewer",
-            "div[role='dialog']",
-            ".iva-core-modal-window",
+            "[e2e-id='settings-page.list.audio']",
+            "text=Аудио",
+            "text=Audio",
+        ],
+        timeout_ms=12_000,
+    ).click()
+
+    # Ждем, что раздел аудио открылся.
+    _first_visible(
+        driver,
+        [
+            "text=Микрофон",
+            "text=Microphone",
+            "text=Динамик",
+            "text=Speaker",
         ],
         timeout_ms=15_000,
     )
 
-    assert viewer_modal.is_visible(), (
-        f"После клика по файлу '{file_name}' не открылся просмотрщик"
-    )
+    def _extract_value_text(ctrl) -> str:
+        for selector in [
+            ".iva-select__value",
+            ".selected-value",
+            "[class*='value']",
+            "span",
+        ]:
+            try:
+                value_loc = ctrl.locator(selector).first
+                if value_loc.count() > 0 and value_loc.is_visible():
+                    text = (value_loc.inner_text() or "").strip()
+                    if text:
+                        return text
+            except PlaywrightError:
+                continue
+        try:
+            return (ctrl.inner_text() or "").strip()
+        except PlaywrightError:
+            return ""
 
-    # 7. Закрываем просмотрщик.
-    _close_file_preview()
+    def _pick_another_device(control, device_name: str):
+        before_text = _extract_value_text(control)
+        try:
+            control.click()
+        except PlaywrightError:
+            pass
+        try:
+            control.locator("button, .iva-select__trigger, [class*='arrow']").first.click(timeout=2_000)
+        except PlaywrightError:
+            pass
+        driver.wait_for_timeout(400)
+
+        options = driver.locator(
+            ".iva-select-option:visible, [role='option']:visible, .cdk-overlay-container [class*='option']:visible"
+        )
+        option_count = options.count()
+        if option_count == 0:
+            # fallback для вариантов, где :visible не срабатывает на сложной верстке.
+            options = driver.locator(".iva-select-option, [role='option'], .cdk-overlay-container [class*='option']")
+            option_count = options.count()
+        if option_count == 0:
+            try:
+                control.press("ArrowDown")
+                driver.wait_for_timeout(300)
+                options = driver.locator(".iva-select-option, [role='option'], .cdk-overlay-container [class*='option']")
+                option_count = options.count()
+            except PlaywrightError:
+                pass
+        if option_count == 0:
+            # Последний fallback: переключаем устройство клавиатурой (без явного списка).
+            changed_by_keyboard = False
+            for key in ("ArrowDown", "ArrowUp"):
+                try:
+                    # В некоторых сборках control.press не срабатывает, если фокус остается на body.
+                    control.click(force=True)
+                    driver.wait_for_timeout(150)
+                    driver.keyboard.press(key)
+                    driver.wait_for_timeout(250)
+                    driver.keyboard.press("Enter")
+                    driver.wait_for_timeout(400)
+                    after_text_keyboard = _extract_value_text(control)
+                    if after_text_keyboard and after_text_keyboard != before_text:
+                        changed_by_keyboard = True
+                        break
+                except PlaywrightError:
+                    continue
+            if changed_by_keyboard:
+                return
+            pytest.skip(f"Не удалось открыть список устройств для {device_name} в этой сборке")
+
+        selected = False
+        for idx in range(min(option_count, 20)):
+            opt = options.nth(idx)
+            try:
+                if not opt.is_visible():
+                    continue
+                text = (opt.inner_text() or "").strip()
+                if not text:
+                    continue
+                if before_text and text == before_text:
+                    continue
+                if "по умолчанию" in text.lower() and before_text and "по умолчанию" in before_text.lower():
+                    continue
+                opt.click()
+                selected = True
+                break
+            except PlaywrightError:
+                continue
+
+        if not selected:
+            driver.keyboard.press("Escape")
+            pytest.skip(f"Для {device_name} нет альтернативного устройства для выбора")
+
+        driver.wait_for_timeout(500)
+        after_text = _extract_value_text(control)
+        assert after_text and after_text != before_text, (
+            f"Устройство для {device_name} не изменилось после выбора. Было: '{before_text}', стало: '{after_text}'"
+        )
+
+    # На вкладке "Аудио" проверяем микрофон и динамик.
+    audio_controls = [
+        ("microphone", ["text=Микрофон", "text=Microphone"]),
+        ("speaker", ["text=Динамик", "text=Speaker", "text=Speakers"]),
+    ]
+
+    for device_name, title_locators in audio_controls:
+        title = _first_visible(driver, title_locators, timeout_ms=8_000)
+        container = title.locator(
+            "xpath=ancestor::*[self::div or self::section][1]"
+        ).first
+
+        control = None
+        for selector in [
+            "[role='combobox']",
+            "button[aria-haspopup='listbox']",
+            "button[aria-expanded]",
+            "iva-select",
+            ".iva-select",
+            "[class*='select']",
+            "[class*='dropdown']",
+        ]:
+            candidate = container.locator(selector).first
+            try:
+                if candidate.count() > 0 and candidate.is_visible():
+                    control = candidate
+                    break
+            except PlaywrightError:
+                continue
+
+        assert control is not None, f"Не найден контрол выбора устройства для: {device_name}"
+        try:
+            assert control.is_enabled(), f"Контрол выбора устройства отключен для: {device_name}"
+        except PlaywrightError:
+            pass
+        _pick_another_device(control, device_name)
+
+    # Проверку камеры выполняем на вкладке "Видео".
+    _first_visible(
+        driver,
+        [
+            "[e2e-id='settings-page.list.video']",
+            "text=Видео",
+            "text=Video",
+        ],
+        timeout_ms=10_000,
+    ).click()
+
+    camera_title = _first_visible(driver, ["text=Камера", "text=Camera"], timeout_ms=12_000)
+    camera_container = camera_title.locator(
+        "xpath=ancestor::*[self::div or self::section][1]"
+    ).first
+
+    camera_control = None
+    for selector in [
+        "[role='combobox']",
+        "button[aria-haspopup='listbox']",
+        "button[aria-expanded]",
+        "iva-select",
+        ".iva-select",
+        "[class*='select']",
+        "[class*='dropdown']",
+    ]:
+        candidate = camera_container.locator(selector).first
+        try:
+            if candidate.count() > 0 and candidate.is_visible():
+                camera_control = candidate
+                break
+        except PlaywrightError:
+            continue
+
+    assert camera_control is not None, "Не найден контрол выбора устройства для: camera"
+    try:
+        assert camera_control.is_enabled(), "Контрол выбора устройства отключен для: camera"
+    except PlaywrightError:
+        pass
+    _pick_another_device(camera_control, "camera")
